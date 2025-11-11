@@ -1,0 +1,8 @@
+
+{
+  "name": "ObraMap",
+  "description": "A comprehensive application for prospecting and managing construction projects, featuring map-based lead tracking, task management, and performance dashboards.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
