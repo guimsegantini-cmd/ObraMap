@@ -37,27 +37,32 @@ import {
   ListIcon, MapIcon, CheckSquareIcon, BarChartIcon, UserIcon, EyeIcon, EyeOffIcon, XIcon, PlusIcon, PhoneIcon, MailIcon, BriefcaseIcon, EditIcon, TrashIcon, PlusCircleIcon, RouteIcon, NavigationIcon, MyLocationIcon, DownloadIcon, UploadIcon
 } from './components/Icons';
 
-// --- MOCK DATA FOR DEMO MODE ---
+// --- HELPERS & MOCKS ---
+const getCurrentMonthId = () => new Date().toISOString().slice(0, 7); // YYYY-MM
+
+const createDefaultMetas = (monthId: string): Metas => {
+    const defaultPorRepresentada = Object.values(Representada).reduce((acc, rep) => {
+        acc[rep] = 0;
+        return acc;
+    }, {} as Record<Representada, number>);
+
+    return {
+        id: monthId,
+        vendasTotais: 100000,
+        visitas: 20,
+        ligacoes: 40,
+        porRepresentada: defaultPorRepresentada,
+    };
+};
+
+const MOCK_METAS: Metas = createDefaultMetas(getCurrentMonthId());
+
 const MOCK_USER: User = {
     id: 'mock_user_id',
     nomeCompleto: 'Usuário Demo',
     email: 'demo@obramap.com',
 };
-const MOCK_METAS: Metas = {
-    vendasTotais: 150000,
-    visitas: 25,
-    ligacoes: 50,
-    porRepresentada: {
-        [Representada.DM2]: 50000,
-        [Representada.ALUMBRA]: 30000,
-        [Representada.MGM]: 20000,
-        [Representada.ROCA]: 40000,
-        [Representada.CONSTRUCOM]: 10000,
-    }
-};
 
-
-// --- HELPERS ---
 const getFirebaseErrorMessage = (errorCode: string): string => {
   switch (errorCode) {
     case 'auth/invalid-email':
@@ -74,11 +79,10 @@ const getFirebaseErrorMessage = (errorCode: string): string => {
       return 'A senha é muito fraca. Use pelo menos 6 caracteres.';
     case 'auth/operation-not-allowed':
       return 'O cadastro por e-mail/senha não está habilitado.';
-    // Firestore permission error, common during signup
     case 'permission-denied':
         return 'Permissão negada. Verifique as regras de segurança do seu banco de dados (Firestore).';
     default:
-      console.error("Firebase Error:", errorCode); // Log the actual error for debugging
+      console.error("Firebase Error:", errorCode);
       return 'Ocorreu um erro. Por favor, tente novamente.';
   }
 };
@@ -127,7 +131,7 @@ const LoginPage: FC<{ setPage: (page: 'login' | 'signup' | 'forgot') => void; on
                 setError('Credenciais de demonstração inválidas. Use demo@obramap.com e demo123.');
                 setIsLoading(false);
             }
-        }, 1000); // Simula atraso de rede
+        }, 1000);
         return;
     }
 
@@ -141,7 +145,6 @@ const LoginPage: FC<{ setPage: (page: 'login' | 'signup' | 'forgot') => void; on
         setError("Seu e-mail ainda não foi verificado. Por favor, verifique sua caixa de entrada.");
         await signOut(auth);
       }
-      // onLoginSuccess will be handled by onAuthStateChanged listener
     } catch (err: any) {
       setError(getFirebaseErrorMessage(err.code));
     } finally {
@@ -803,17 +806,20 @@ const TarefasTab: FC<{ obras: Obra[], onRoteirizar: (obras: Obra[]) => void }> =
     );
 };
 
-const DashboardTab: FC<{ obras: Obra[], metas: Metas | null }> = ({ obras, metas }) => {
+const DashboardTab: FC<{ obras: Obra[], allMetas: Metas[] }> = ({ obras, allMetas }) => {
+    const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthId());
     const [showPercentage, setShowPercentage] = useState(false);
 
-    const data = useMemo(() => {
-        const fechados = obras.filter(o => o.etapa === EtapaLead.FECHADO);
+    const { data, selectedMetas } = useMemo(() => {
+        const metas = allMetas.find(m => m.id === selectedMonth) || createDefaultMetas(selectedMonth);
+
+        const fechados = obras.filter(o => o.etapa === EtapaLead.FECHADO && o.dataCadastro.slice(0, 7) === selectedMonth);
+        const tarefasConcluidasDoMes = obras.flatMap(o => o.tarefas).filter(t => t.status === 'Concluída' && new Date(t.data).toISOString().slice(0, 7) === selectedMonth);
         
         const valorFechado = fechados.reduce((sum, obra) => sum + obra.propostas.reduce((pSum, p) => pSum + p.valor, 0), 0);
+        const visitasRealizadas = tarefasConcluidasDoMes.filter(t => t.tipo === TipoTarefa.VISITA).length;
+        const ligacoesRealizadas = tarefasConcluidasDoMes.filter(t => t.tipo === TipoTarefa.LIGACAO).length;
         
-        const visitasRealizadas = obras.flatMap(o => o.tarefas).filter(t => t.tipo === TipoTarefa.VISITA && t.status === 'Concluída').length;
-        const ligacoesRealizadas = obras.flatMap(o => o.tarefas).filter(t => t.tipo === TipoTarefa.LIGACAO && t.status === 'Concluída').length;
-
         const obrasPorEtapa = ETAPA_LEAD_OPTIONS.map(etapa => ({
             name: etapa.label,
             value: obras.filter(o => o.etapa === etapa.value).length,
@@ -835,28 +841,31 @@ const DashboardTab: FC<{ obras: Obra[], metas: Metas | null }> = ({ obras, metas
             Valor: fechados.flatMap(o => o.propostas).reduce((sum, p) => p.representada === r ? sum + p.valor : sum, 0),
         }));
 
-        const valorPorProdutoFechado = fechados.flatMap(o => o.propostas).reduce((acc, p) => {
-            acc[p.produto] = (acc[p.produto] || 0) + p.valor;
-            return acc;
-        }, {} as Record<string, number>);
-
-        const produtoData = Object.entries(valorPorProdutoFechado).map(([name, Valor]) => ({ name, Valor }));
-
         return {
-            valorFechado,
-            visitasRealizadas,
-            ligacoesRealizadas,
-            obrasPorEtapa,
-            propostasPorRepresentada,
-            valorPropostaPorRepresentada,
-            valorFechadoPorRepresentada,
-            produtoData,
+            data: {
+                valorFechado,
+                visitasRealizadas,
+                ligacoesRealizadas,
+                obrasPorEtapa,
+                propostasPorRepresentada,
+                valorPropostaPorRepresentada,
+                valorFechadoPorRepresentada,
+                valorFechadoPorRepresentadaData: valorFechadoPorRepresentada,
+            },
+            selectedMetas: metas,
         };
-    }, [obras]);
+    }, [obras, allMetas, selectedMonth]);
 
     const getPercentage = (value: number, goal: number) => (goal > 0 ? (value / goal) * 100 : 0);
+    
+    const formatMonth = (monthId: string) => {
+        const [year, month] = monthId.split('-');
+        const date = new Date(parseInt(year), parseInt(month) - 1);
+        const formatted = date.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+        return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+    };
 
-    const renderMeta = (label: string, value: number, goal: number) => {
+    const renderMeta = (label: string, value: number, goal: number, colorClass = 'bg-green-500') => {
         const percentage = getPercentage(value, goal);
         return (
             <div className="bg-gray-100 p-3 rounded-lg">
@@ -867,7 +876,7 @@ const DashboardTab: FC<{ obras: Obra[], metas: Metas | null }> = ({ obras, metas
                     <p className="text-xl font-bold">{value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0 })}</p>
                 )}
                 <div className="w-full bg-gray-300 rounded-full h-2 mt-1">
-                    <div className="bg-green-500 h-2 rounded-full" style={{ width: `${Math.min(percentage, 100)}%` }}></div>
+                    <div className={`${colorClass} h-2 rounded-full`} style={{ width: `${Math.min(percentage, 100)}%` }}></div>
                 </div>
                 <p className="text-xs text-right text-gray-500 mt-1">Meta: {goal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0 })}</p>
             </div>
@@ -892,44 +901,57 @@ const DashboardTab: FC<{ obras: Obra[], metas: Metas | null }> = ({ obras, metas
         );
     }
     
-    if (!metas) return <div className="p-4">Carregando dados do dashboard...</div>;
+    if (!allMetas) return <div className="p-4">Carregando dados do dashboard...</div>;
 
     return (
         <div className="h-full flex flex-col">
-            <div className="p-4 bg-white shadow-md z-10">
+            <div className="p-4 bg-white shadow-md z-10 space-y-4">
                  <div className="flex justify-between items-center">
                     <h2 className="text-2xl font-bold">Dashboard</h2>
-                    <div className="flex items-center">
-                        <span className="text-sm mr-2">Metas em %</span>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" checked={showPercentage} onChange={() => setShowPercentage(!showPercentage)} className="sr-only peer" />
-                            <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                        </label>
-                    </div>
+                    <select value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)} className="p-2 border rounded-md">
+                        {allMetas.sort((a, b) => b.id.localeCompare(a.id)).map(meta => (
+                             <option key={meta.id} value={meta.id}>{formatMonth(meta.id)}</option>
+                        ))}
+                    </select>
+                </div>
+                 <div className="flex justify-end items-center">
+                    <span className="text-sm mr-2">Metas em %</span>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" checked={showPercentage} onChange={() => setShowPercentage(!showPercentage)} className="sr-only peer" />
+                        <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
                 </div>
             </div>
             <div className="flex-grow overflow-y-auto p-4 bg-gray-50 space-y-6">
-                {/* KPIs */}
-                <div className="grid grid-cols-3 gap-4 text-center">
-                    <div className="bg-white p-4 rounded-lg shadow"><p className="text-sm text-gray-500">Valor Fechado</p><p className="text-2xl font-bold">{data.valorFechado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p></div>
-                    <div className="bg-white p-4 rounded-lg shadow"><p className="text-sm text-gray-500">Visitas Realizadas</p><p className="text-2xl font-bold">{data.visitasRealizadas}</p></div>
-                    <div className="bg-white p-4 rounded-lg shadow"><p className="text-sm text-gray-500">Ligações Realizadas</p><p className="text-2xl font-bold">{data.ligacoesRealizadas}</p></div>
+                <div className="bg-white p-4 rounded-lg shadow">
+                    <h3 className="font-bold text-lg mb-2">Resultados de {formatMonth(selectedMonth)}</h3>
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                        <div><p className="text-sm text-gray-500">Valor Fechado</p><p className="text-2xl font-bold">{data.valorFechado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p></div>
+                        <div><p className="text-sm text-gray-500">Visitas Realizadas</p><p className="text-2xl font-bold">{data.visitasRealizadas}</p></div>
+                        <div><p className="text-sm text-gray-500">Ligações Realizadas</p><p className="text-2xl font-bold">{data.ligacoesRealizadas}</p></div>
+                    </div>
                 </div>
 
-                {/* Metas */}
                  <div className="bg-white p-4 rounded-lg shadow">
-                    <h3 className="font-bold text-lg mb-2">Metas do Mês</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {renderMeta("Vendas Totais", data.valorFechado, metas.vendasTotais)}
-                        {renderCountMeta("Visitas", data.visitasRealizadas, metas.visitas)}
-                        {renderCountMeta("Ligações", data.ligacoesRealizadas, metas.ligacoes)}
+                    <h3 className="font-bold text-lg mb-2">Metas de {formatMonth(selectedMonth)}</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                        {renderMeta("Vendas Totais", data.valorFechado, selectedMetas.vendasTotais)}
+                        {renderCountMeta("Visitas", data.visitasRealizadas, selectedMetas.visitas)}
+                        {renderCountMeta("Ligações", data.ligacoesRealizadas, selectedMetas.ligacoes)}
+                    </div>
+                    <h4 className="font-semibold text-md mb-2 mt-6 border-t pt-4">Metas por Representada</h4>
+                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {Object.values(Representada).map(rep => {
+                            const valorFechadoRep = data.valorFechadoPorRepresentadaData.find(d => d.name === rep)?.Valor || 0;
+                            const metaRep = selectedMetas.porRepresentada[rep] || 0;
+                            return renderMeta(rep, valorFechadoRep, metaRep, 'bg-purple-500');
+                        })}
                     </div>
                  </div>
 
-                {/* Charts */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <div className="bg-white p-4 rounded-lg shadow h-80">
-                         <h3 className="font-bold text-lg mb-2">Obras por Etapa</h3>
+                         <h3 className="font-bold text-lg mb-2">Obras por Etapa (Geral)</h3>
                          <ResponsiveContainer width="100%" height="100%">
                             <PieChart>
                                 <Pie data={data.obrasPorEtapa} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
@@ -941,7 +963,7 @@ const DashboardTab: FC<{ obras: Obra[], metas: Metas | null }> = ({ obras, metas
                         </ResponsiveContainer>
                     </div>
                      <div className="bg-white p-4 rounded-lg shadow h-80">
-                         <h3 className="font-bold text-lg mb-2">Propostas por Representada</h3>
+                         <h3 className="font-bold text-lg mb-2">Propostas por Representada (Geral)</h3>
                          <ResponsiveContainer width="100%" height="100%">
                              <BarChart data={data.propostasPorRepresentada} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
@@ -953,7 +975,7 @@ const DashboardTab: FC<{ obras: Obra[], metas: Metas | null }> = ({ obras, metas
                          </ResponsiveContainer>
                     </div>
                      <div className="bg-white p-4 rounded-lg shadow h-80">
-                         <h3 className="font-bold text-lg mb-2">Valor em Proposta por Representada</h3>
+                         <h3 className="font-bold text-lg mb-2">Valor em Proposta por Representada (Geral)</h3>
                          <ResponsiveContainer width="100%" height="100%">
                              <BarChart data={data.valorPropostaPorRepresentada} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
@@ -965,7 +987,7 @@ const DashboardTab: FC<{ obras: Obra[], metas: Metas | null }> = ({ obras, metas
                          </ResponsiveContainer>
                     </div>
                      <div className="bg-white p-4 rounded-lg shadow h-80">
-                         <h3 className="font-bold text-lg mb-2">Valor Fechado por Representada</h3>
+                         <h3 className="font-bold text-lg mb-2">Valor Fechado por Representada ({formatMonth(selectedMonth)})</h3>
                          <ResponsiveContainer width="100%" height="100%">
                               <BarChart data={data.valorFechadoPorRepresentada} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
@@ -986,7 +1008,7 @@ const PerfilTab: FC<{
     user: User, 
     metas: Metas | null,
     onLogout: () => void,
-    onUpdateMetas: (newMetas: Metas) => Promise<void> 
+    onUpdateMetas: (newMetas: Omit<Metas, 'id'>) => Promise<void> 
 }> = ({ user, metas, onLogout, onUpdateMetas }) => {
     const [isMetasModalOpen, setIsMetasModalOpen] = useState(false);
     const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
@@ -1032,36 +1054,71 @@ const MetasModal: FC<{
     isOpen: boolean,
     onClose: () => void,
     currentMetas: Metas,
-    onSave: (newMetas: Metas) => Promise<void>
+    onSave: (newMetas: Omit<Metas, 'id'>) => Promise<void>
 }> = ({ isOpen, onClose, currentMetas, onSave }) => {
-    const [metas, setMetas] = useState<Metas>(currentMetas);
+    const [metas, setMetas] = useState(currentMetas);
     const [isLoading, setIsLoading] = useState(false);
 
     const handleSave = async () => {
         setIsLoading(true);
-        await onSave(metas);
+        const { id, ...metasToSave } = metas;
+        await onSave(metasToSave);
         setIsLoading(false);
         onClose();
+    };
+    
+    const handleRepChange = (rep: Representada, value: number) => {
+        setMetas(prev => ({
+            ...prev,
+            porRepresentada: {
+                ...prev.porRepresentada,
+                [rep]: value
+            }
+        }));
+    };
+    
+    const formatMonth = (monthId: string) => {
+        const [year, month] = monthId.split('-');
+        const date = new Date(parseInt(year), parseInt(month) - 1);
+        const formatted = date.toLocaleString('pt-BR', { month: 'long', year: 'numeric' });
+        return formatted.charAt(0).toUpperCase() + formatted.slice(1);
     };
 
     if (!isOpen) return null;
 
     return (
-         <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center">
-            <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md m-4">
-                <h3 className="text-xl font-bold mb-4">Editar Metas</h3>
-                <div className="space-y-3">
-                    <div>
-                        <label className="text-sm">Vendas Totais (R$)</label>
-                        <input type="number" value={metas.vendasTotais} onChange={e => setMetas({...metas, vendasTotais: +e.target.value})} className="w-full p-2 border rounded"/>
+         <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center p-4">
+            <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg max-h-full overflow-y-auto">
+                <h3 className="text-xl font-bold mb-4">Editar Metas de {formatMonth(currentMetas.id)}</h3>
+                <div className="space-y-4">
+                    <h4 className="font-semibold text-md border-b pb-2">Metas Gerais</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div>
+                            <label className="text-sm">Vendas Totais (R$)</label>
+                            <input type="number" value={metas.vendasTotais} onChange={e => setMetas({...metas, vendasTotais: +e.target.value})} className="w-full p-2 border rounded"/>
+                        </div>
+                         <div>
+                            <label className="text-sm">Nº de Visitas</label>
+                            <input type="number" value={metas.visitas} onChange={e => setMetas({...metas, visitas: +e.target.value})} className="w-full p-2 border rounded"/>
+                        </div>
+                         <div>
+                            <label className="text-sm">Nº de Ligações</label>
+                            <input type="number" value={metas.ligacoes} onChange={e => setMetas({...metas, ligacoes: +e.target.value})} className="w-full p-2 border rounded"/>
+                        </div>
                     </div>
-                     <div>
-                        <label className="text-sm">Nº de Visitas</label>
-                        <input type="number" value={metas.visitas} onChange={e => setMetas({...metas, visitas: +e.target.value})} className="w-full p-2 border rounded"/>
-                    </div>
-                     <div>
-                        <label className="text-sm">Nº de Ligações</label>
-                        <input type="number" value={metas.ligacoes} onChange={e => setMetas({...metas, ligacoes: +e.target.value})} className="w-full p-2 border rounded"/>
+                    <h4 className="font-semibold text-md border-b pb-2 pt-4">Metas por Representada (R$)</h4>
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {Object.values(Representada).map(rep => (
+                            <div key={rep}>
+                                <label className="text-sm">{rep}</label>
+                                <input 
+                                    type="number" 
+                                    value={metas.porRepresentada[rep] || 0} 
+                                    onChange={e => handleRepChange(rep, +e.target.value)} 
+                                    className="w-full p-2 border rounded"
+                                />
+                            </div>
+                        ))}
                     </div>
                 </div>
                 <div className="mt-6 flex justify-end space-x-3">
@@ -1145,7 +1202,9 @@ export default function App() {
 
     const [obras, setObras] = useState<Obra[]>([]);
     const [regions, setRegions] = useState<Region[]>([]);
-    const [metas, setMetas] = useState<Metas | null>(null);
+    const [allMetas, setAllMetas] = useState<Metas[]>([]);
+    const [currentMonthMetas, setCurrentMonthMetas] = useState<Metas | null>(null);
+    
     const [flyToTarget, setFlyToTarget] = useState<[number, number] | null>(null);
     const [routeToDraw, setRouteToDraw] = useState<Obra[] | null>(null);
     
@@ -1157,7 +1216,8 @@ export default function App() {
         setIsLoadingData(true);
         setUser(loggedInUser);
         setObras(MOCK_OBRAS);
-        setMetas(MOCK_METAS);
+        setAllMetas([MOCK_METAS]);
+        setCurrentMonthMetas(MOCK_METAS);
         setRegions([]);
         setIsLoadingData(false);
     }, []);
@@ -1170,6 +1230,7 @@ export default function App() {
         }
         setIsLoadingData(true);
         try {
+            const monthId = getCurrentMonthId();
             // Fetch Obras
             const obrasQuery = query(collection(db, `users/${userId}/obras`));
             const obrasSnapshot = await getDocs(obrasQuery);
@@ -1182,12 +1243,19 @@ export default function App() {
             setRegions(regionsData);
 
             // Fetch Metas
-            const metasDocRef = doc(db, `users/${userId}/data/metas`);
-            const metasDoc = await getDoc(metasDocRef);
-            if (metasDoc.exists()) {
-                setMetas(metasDoc.data() as Metas);
+            const metasQuery = query(collection(db, `users/${userId}/metas`));
+            const metasSnapshot = await getDocs(metasQuery);
+            const metasData = metasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Metas));
+            
+            if (metasData.length === 0) {
+                 const defaultMetas = createDefaultMetas(monthId);
+                 await setDoc(doc(db, `users/${userId}/metas`, monthId), defaultMetas);
+                 setAllMetas([defaultMetas]);
+                 setCurrentMonthMetas(defaultMetas);
             } else {
-                 setMetas({ vendasTotais: 0, visitas: 0, ligacoes: 0, porRepresentada: {} as Record<Representada, number> });
+                 setAllMetas(metasData);
+                 const currentMetas = metasData.find(m => m.id === monthId) || createDefaultMetas(monthId);
+                 setCurrentMonthMetas(currentMetas);
             }
 
             // Check for inactive obras
@@ -1239,7 +1307,6 @@ export default function App() {
                 setObras(obrasData);
             }
 
-
         } catch (error) {
             console.error("Error fetching data:", error);
         } finally {
@@ -1273,19 +1340,8 @@ export default function App() {
                     };
 
                     try {
-                        const batch = writeBatch(db);
-                        batch.set(userDocRef, newUserProfile);
-                        const metasDocRef = doc(db, `users/${firebaseUser.uid}/data/metas`);
-                        batch.set(metasDocRef, {
-                            vendasTotais: 100000,
-                            visitas: 20,
-                            ligacoes: 40,
-                            porRepresentada: {},
-                        } as Metas);
-                        
-                        await batch.commit();
+                        await setDoc(userDocRef, newUserProfile);
                         userProfileData = newUserProfile;
-
                     } catch (error) {
                         console.error("CRÍTICO: Falha ao criar o perfil do usuário no primeiro login.", error);
                         alert("Não foi possível configurar seu perfil no banco de dados. Verifique as regras de segurança do Firestore e tente fazer login novamente.");
@@ -1303,7 +1359,8 @@ export default function App() {
                 setUser(null);
                 setObras([]);
                 setRegions([]);
-                setMetas(null);
+                setCurrentMonthMetas(null);
+                setAllMetas([]);
             }
             setIsLoadingAuth(false);
         });
@@ -1386,18 +1443,29 @@ export default function App() {
 
     const editObra = (obra: Obra) => openLeadForm(undefined, obra);
 
-    const updateMetas = async (newMetas: Metas) => {
+    const updateMetas = async (newMetasData: Omit<Metas, 'id'>) => {
+        const monthId = getCurrentMonthId();
+        const newMetas: Metas = { id: monthId, ...newMetasData };
+
         if (!isFirebaseConfigured) {
-            setMetas(newMetas);
+            setCurrentMonthMetas(newMetas);
+            setAllMetas(prev => prev.map(m => m.id === monthId ? newMetas : m));
             alert("Metas atualizadas (modo demonstração).");
             return;
         }
 
         if (!user || !db) return;
         try {
-            const metasDocRef = doc(db, `users/${user.id}/data/metas`);
-            await setDoc(metasDocRef, newMetas);
-            setMetas(newMetas);
+            const metasDocRef = doc(db, `users/${user.id}/metas`, monthId);
+            await setDoc(metasDocRef, newMetasData); // Save without id in the document body
+            setCurrentMonthMetas(newMetas);
+            setAllMetas(prev => {
+                const existing = prev.find(m => m.id === monthId);
+                if (existing) {
+                    return prev.map(m => m.id === monthId ? newMetas : m);
+                }
+                return [...prev, newMetas];
+            });
             alert("Metas atualizadas com sucesso!");
         } catch (error) {
             console.error("Erro ao atualizar metas:", error);
@@ -1409,7 +1477,6 @@ export default function App() {
         if(obrasParaVisitar.length > 0) {
             setRouteToDraw(obrasParaVisitar);
             setActiveTab('map');
-            // Fly to the first obra in the route
             handleFlyTo([obrasParaVisitar[0].lat, obrasParaVisitar[0].lng]);
         } else {
             alert("Nenhuma tarefa de visita para hoje!");
@@ -1455,9 +1522,9 @@ export default function App() {
             case 'tasks':
                 return <TarefasTab obras={obras} onRoteirizar={handleRoteirizar} />;
             case 'dashboard':
-                return <DashboardTab obras={obras} metas={metas} />;
+                return <DashboardTab obras={obras} allMetas={allMetas} />;
             case 'profile':
-                return <PerfilTab user={user} metas={metas} onLogout={handleLogout} onUpdateMetas={updateMetas} />;
+                return <PerfilTab user={user} metas={currentMonthMetas} onLogout={handleLogout} onUpdateMetas={updateMetas} />;
             default:
                 return null;
         }
