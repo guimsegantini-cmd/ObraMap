@@ -4,39 +4,25 @@ import { getAuth, Auth } from "firebase/auth";
 import { getFirestore, Firestore } from "firebase/firestore";
 import { getStorage, FirebaseStorage } from "firebase/storage";
 
-// The environment variables are expected to be available in the execution context,
-// provided by the platform under `process.env`.
-const env = process.env;
-
-// Your web app's Firebase configuration is now read from Environment Variables.
+// Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: env.API_KEY,
-  authDomain: env.AUTH_DOMAIN,
-  projectId: env.PROJECT_ID,
-  storageBucket: env.STORAGE_BUCKET,
-  messagingSenderId: env.MESSAGING_SENDER_ID,
-  appId: env.APP_ID
+  apiKey: "AIzaSyAgcwrL1JLbNSjXUgNlqxJAXD8X5i0-e4U",
+  authDomain: "obramap-5d7a9.firebaseapp.com",
+  projectId: "obramap-5d7a9",
+  storageBucket: "obramap-5d7a9.appspot.com",
+  messagingSenderId: "920668288295",
+  appId: "1:920668288295:web:515e86d3cd124877326502",
+  measurementId: "G-5N15LWC3H6"
 };
 
-let app = null;
-let auth: Auth | null = null;
-let db: Firestore | null = null;
-let storage: FirebaseStorage | null = null;
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const auth: Auth = getAuth(app);
+const db: Firestore = getFirestore(app);
+const storage: FirebaseStorage = getStorage(app);
 
-// Initialize Firebase only if the essential configuration is present.
-if (firebaseConfig.apiKey) {
-  try {
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    db = getFirestore(app);
-    storage = getStorage(app);
-  } catch(e) {
-    console.error("Error initializing Firebase:", e);
-    // Services will remain null if initialization fails.
-  }
-} else {
-    console.error("Firebase API Key is missing. Check your environment variables (e.g., API_KEY).");
-}
+// This flag is now always true, as the configuration is hardcoded.
+export const isFirebaseConfigured = true;
 
-// Export Firebase services
+// Export the Firebase services
 export { auth, db, storage };
