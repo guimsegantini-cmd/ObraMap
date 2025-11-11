@@ -83,6 +83,7 @@ export interface User {
 }
 
 export interface Metas {
+  id: string; // YYYY-MM format
   vendasTotais: number;
   visitas: number;
   ligacoes: number;
