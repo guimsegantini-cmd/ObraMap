@@ -1,10 +1,8 @@
-
-
 import React, { useState, useEffect, useMemo, FC, useCallback, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polyline, Polygon, CircleMarker } from 'react-leaflet';
 import L, { LatLngExpression } from 'leaflet';
 import * as Recharts from 'recharts';
-import { auth, db, storage } from './firebase';
+import { auth, db, storage, isFirebaseConfigured } from './firebase';
 import { 
   createUserWithEmailAndPassword, 
   signInWithEmailAndPassword, 
@@ -34,10 +32,29 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage
 const { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } = Recharts;
 
 import { Obra, EtapaLead, User, Tarefa, TipoTarefa, Contato, FaseObra, Proposta, Representada, Metas, Region } from './types';
-import { ETAPA_LEAD_OPTIONS, FASE_OBRA_OPTIONS, REPRESENTADA_PRODUTOS_MAP } from './constants';
+import { ETAPA_LEAD_OPTIONS, FASE_OBRA_OPTIONS, REPRESENTADA_PRODUTOS_MAP, MOCK_OBRAS } from './constants';
 import {
   ListIcon, MapIcon, CheckSquareIcon, BarChartIcon, UserIcon, EyeIcon, EyeOffIcon, XIcon, PlusIcon, PhoneIcon, MailIcon, BriefcaseIcon, EditIcon, TrashIcon, PlusCircleIcon, RouteIcon, NavigationIcon, MyLocationIcon, DownloadIcon, UploadIcon
 } from './components/Icons';
+
+// --- MOCK DATA FOR DEMO MODE ---
+const MOCK_USER: User = {
+    id: 'mock_user_id',
+    nomeCompleto: 'Usuário Demo',
+    email: 'demo@obramap.com',
+};
+const MOCK_METAS: Metas = {
+    vendasTotais: 150000,
+    visitas: 25,
+    ligacoes: 50,
+    porRepresentada: {
+        [Representada.DM2]: 50000,
+        [Representada.ALUMBRA]: 30000,
+        [Representada.MGM]: 20000,
+        [Representada.ROCA]: 40000,
+        [Representada.CONSTRUCOM]: 10000,
+    }
+};
 
 
 // --- HELPERS ---
@@ -70,6 +87,11 @@ const getFirebaseErrorMessage = (errorCode: string): string => {
 // --- AUTH COMPONENTS ---
 const AuthLayout: FC<{ title: string, subtitle: string, children: React.ReactNode }> = ({ title, subtitle, children }) => (
   <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center p-4">
+    {!isFirebaseConfigured && (
+        <div className="absolute top-0 left-0 right-0 bg-yellow-300 text-yellow-800 text-center p-2 text-sm shadow-sm z-10">
+            Modo Demonstração. Nenhum dado será salvo.
+        </div>
+    )}
     <div className="w-full max-w-sm mx-auto">
       <div className="text-center mb-8">
         <div className="inline-block bg-orange-400 p-4 rounded-2xl shadow-lg">
@@ -83,7 +105,7 @@ const AuthLayout: FC<{ title: string, subtitle: string, children: React.ReactNod
   </div>
 );
 
-const LoginPage: FC<{ setPage: (page: 'login' | 'signup' | 'forgot') => void; }> = ({ setPage }) => {
+const LoginPage: FC<{ setPage: (page: 'login' | 'signup' | 'forgot') => void; onMockLogin: (user: User) => void; }> = ({ setPage, onMockLogin }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -93,10 +115,24 @@ const LoginPage: FC<{ setPage: (page: 'login' | 'signup' | 'forgot') => void; }>
   const [needsVerification, setNeedsVerification] = useState<FirebaseUser | null>(null);
 
   const handleLogin = async () => {
-    if (!auth) return;
     setError('');
     setSuccess('');
     setIsLoading(true);
+
+    if (!isFirebaseConfigured) {
+        setTimeout(() => {
+            if (email === 'demo@obramap.com' && password === 'demo123') {
+                onMockLogin(MOCK_USER);
+            } else {
+                setError('Credenciais de demonstração inválidas. Use demo@obramap.com e demo123.');
+                setIsLoading(false);
+            }
+        }, 1000); // Simula atraso de rede
+        return;
+    }
+
+    if (!auth) return;
+    
     setNeedsVerification(null);
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -168,7 +204,7 @@ const LoginPage: FC<{ setPage: (page: 'login' | 'signup' | 'forgot') => void; }>
   );
 };
 
-const SignupPage: FC<{ setPage: (page: 'login' | 'signup' | 'forgot') => void; }> = ({ setPage }) => {
+const SignupPage: FC<{ setPage: (page: 'login' | 'signup' | 'forgot') => void; onMockLogin: (user: User) => void; }> = ({ setPage, onMockLogin }) => {
     const [nomeCompleto, setNomeCompleto] = useState('');
     const [email, setEmail] = useState('');
     const [senha, setSenha] = useState('');
@@ -180,7 +216,6 @@ const SignupPage: FC<{ setPage: (page: 'login' | 'signup' | 'forgot') => void; }
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
     const handleSignup = async () => {
-        if (!auth) return;
         setError('');
         setSuccess('');
         if (!nomeCompleto || !email || !senha || !confirmarSenha) {
@@ -195,20 +230,25 @@ const SignupPage: FC<{ setPage: (page: 'login' | 'signup' | 'forgot') => void; }
             setError('A senha deve ter pelo menos 6 caracteres.');
             return;
         }
-        
+
         setIsLoading(true);
+
+        if (!isFirebaseConfigured) {
+            setSuccess('Conta de demonstração criada com sucesso! Redirecionando...');
+            setTimeout(() => {
+                onMockLogin({ id: `mock_${Date.now()}`, nomeCompleto, email });
+            }, 2000);
+            return;
+        }
+        
+        if (!auth) return;
+        
         try {
             const userCredential = await createUserWithEmailAndPassword(auth, email, senha);
-            // Salva o nome do usuário no perfil de autenticação.
-            // O perfil do banco de dados será criado no primeiro login bem-sucedido.
             await updateProfile(userCredential.user, { displayName: nomeCompleto });
-
             await sendEmailVerification(userCredential.user);
-            
             setSuccess('Cadastro realizado! Um e-mail de verificação foi enviado. Por favor, verifique sua caixa de entrada antes de fazer login.');
-            
             setTimeout(() => setPage('login'), 5000);
-
         } catch (err: any) {
             setError(getFirebaseErrorMessage(err.code));
         } finally {
@@ -263,6 +303,11 @@ const ForgotPasswordPage: FC<{ setPage: (page: 'login' | 'signup' | 'forgot') =>
     const [isLoading, setIsLoading] = useState(false);
 
     const handleResetPassword = async () => {
+        if (!isFirebaseConfigured) {
+            setError('Recuperação de senha não disponível no modo demonstração.');
+            return;
+        }
+
         if (!auth) return;
         setError('');
         setSuccess('');
@@ -307,14 +352,15 @@ const ForgotPasswordPage: FC<{ setPage: (page: 'login' | 'signup' | 'forgot') =>
 const AuthManager: FC<{
   page: 'login' | 'signup' | 'forgot';
   setPage: (page: 'login' | 'signup' | 'forgot') => void;
-}> = ({ page, setPage }) => {
+  onMockLogin: (user: User) => void;
+}> = ({ page, setPage, onMockLogin }) => {
   if (page === 'signup') {
-    return <SignupPage setPage={setPage} />;
+    return <SignupPage setPage={setPage} onMockLogin={onMockLogin} />;
   }
   if (page === 'forgot') {
     return <ForgotPasswordPage setPage={setPage} />;
   }
-  return <LoginPage setPage={setPage} />;
+  return <LoginPage setPage={setPage} onMockLogin={onMockLogin} />;
 };
 
 
@@ -524,57 +570,570 @@ const MapTab: React.FC<{
   );
 };
 
-// Placeholder stubs for other tabs. In a real app, these would be in separate files.
-const ListaTab: FC<{ 
-    obras: Obra[], 
-    onEditObra: (obra: Obra) => void, 
-    onFlyTo: (coords: [number, number]) => void 
-}> = ({ obras, onEditObra, onFlyTo }) => (
-    <div className="p-4">
-        <h2 className="text-2xl font-bold mb-4">Lista de Obras</h2>
-        <ul className="space-y-2">
-            {obras.map((obra) => (
-                <li key={obra.id} className="border p-3 rounded-lg shadow-sm flex justify-between items-center">
-                    <div>
-                        <p className="font-semibold">{obra.nome}</p>
-                        <p className="text-sm text-gray-500">{obra.construtora}</p>
-                    </div>
-                    <div className="space-x-2">
-                        <button onClick={() => onEditObra(obra)} className="p-2 bg-blue-100 text-blue-600 rounded-full"><EditIcon className="h-5 w-5"/></button>
-                        <button onClick={() => onFlyTo([obra.lat, obra.lng])} className="p-2 bg-green-100 text-green-600 rounded-full"><MapIcon className="h-5 w-5"/></button>
-                    </div>
-                </li>
-            ))}
-        </ul>
-    </div>
-);
+const ListaTab: FC<{
+    obras: Obra[],
+    onEditObra: (obra: Obra) => void,
+    onFlyTo: (coords: [number, number]) => void
+}> = ({ obras, onEditObra, onFlyTo }) => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filterEtapa, setFilterEtapa] = useState<EtapaLead | 'todos'>('todos');
+    const [filterFase, setFilterFase] = useState<FaseObra | 'todos'>('todos');
 
-const MetasTab: FC<{ metas: Metas | null, onUpdateMetas: (newMetas: Metas) => void }> = ({ metas, onUpdateMetas }) => (
-    <div className="p-4">
-        <h2 className="text-2xl font-bold mb-4">Metas</h2>
-        {metas ? (
-            <div className="bg-white p-4 rounded-lg shadow">
-                <p>Vendas Totais: R$ {metas.vendasTotais.toFixed(2)}</p>
-                <p>Visitas: {metas.visitas}</p>
-                <p>Ligações: {metas.ligacoes}</p>
+    const filteredObras = useMemo(() => {
+        return obras.filter(obra => {
+            const searchMatch = obra.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                obra.construtora.toLowerCase().includes(searchTerm.toLowerCase());
+            const etapaMatch = filterEtapa === 'todos' || obra.etapa === filterEtapa;
+            const faseMatch = filterFase === 'todos' || obra.fase === filterFase;
+            return searchMatch && etapaMatch && faseMatch;
+        });
+    }, [obras, searchTerm, filterEtapa, filterFase]);
+
+    const etapaCounts = useMemo(() => {
+        return ETAPA_LEAD_OPTIONS.reduce((acc, etapa) => {
+            acc[etapa.value] = filteredObras.filter(o => o.etapa === etapa.value).length;
+            return acc;
+        }, {} as Record<EtapaLead, number>);
+    }, [filteredObras]);
+
+    const totalNegociacao = useMemo(() => {
+        return filteredObras
+            .filter(o => o.etapa === EtapaLead.NEGOCIACAO)
+            .reduce((sum, obra) => {
+                const obraTotal = obra.propostas.reduce((propSum, prop) => propSum + prop.valor, 0);
+                return sum + obraTotal;
+            }, 0);
+    }, [filteredObras]);
+
+    const getEtapaColor = (etapa: EtapaLead) => ETAPA_LEAD_OPTIONS.find(e => e.value === etapa)?.color || 'bg-gray-200';
+
+    return (
+        <div className="h-full flex flex-col">
+            <div className="p-4 bg-white shadow-md z-10">
+                <h2 className="text-2xl font-bold mb-4">Lista de Obras</h2>
+                <input
+                    type="text"
+                    placeholder="Buscar por nome da obra ou construtora..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full p-2 border rounded-md mb-2"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                    <select value={filterEtapa} onChange={e => setFilterEtapa(e.target.value as EtapaLead | 'todos')} className="p-2 border rounded-md">
+                        <option value="todos">Todas Etapas</option>
+                        {ETAPA_LEAD_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                    </select>
+                    <select value={filterFase} onChange={e => setFilterFase(e.target.value as FaseObra | 'todos')} className="p-2 border rounded-md">
+                        <option value="todos">Todas Fases</option>
+                        {FASE_OBRA_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                    {ETAPA_LEAD_OPTIONS.map(etapa => (
+                        <div key={etapa.value} className={`${etapa.color} text-white font-bold py-1 px-2 rounded-full`}>
+                            {etapa.label}: {etapaCounts[etapa.value]}
+                        </div>
+                    ))}
+                </div>
+                {totalNegociacao > 0 &&
+                    <div className="mt-2 text-sm font-semibold bg-yellow-100 text-yellow-800 p-2 rounded-md">
+                        Valor em Negociação: {totalNegociacao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </div>
+                }
             </div>
-        ) : <p>Carregando metas...</p>}
-    </div>
-);
+            <div className="flex-grow overflow-y-auto p-4 bg-gray-50">
+                {filteredObras.length > 0 ? (
+                    <ul className="space-y-3">
+                        {filteredObras.map(obra => {
+                            const contato = obra.contatos[0];
+                            const proposta = obra.propostas[0];
+                            const whatsappLink = contato ? `https://wa.me/${contato.telefone.replace(/\D/g, '')}`: '#';
 
-const PerfilTab: FC<{ user: User, onLogout: () => void }> = ({ user, onLogout }) => (
-    <div className="p-4 flex flex-col items-center">
-        <h2 className="text-2xl font-bold mb-4">Perfil</h2>
-        <div className="bg-white p-6 rounded-lg shadow text-center">
-            <UserIcon className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-            <p className="font-semibold text-lg">{user.nomeCompleto}</p>
-            <p className="text-gray-600">{user.email}</p>
+                            return (
+                                <li key={obra.id} className="bg-white border border-gray-200 p-4 rounded-lg shadow-sm">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <p className="font-bold text-lg text-gray-800">{obra.nome}</p>
+                                            <p className="text-sm text-gray-600">{obra.construtora}</p>
+                                        </div>
+                                        <div className={`text-xs font-semibold px-2 py-1 rounded-full text-white ${getEtapaColor(obra.etapa)}`}>{obra.etapa}</div>
+                                    </div>
+                                    <div className="border-t my-3"></div>
+                                    <div className="space-y-2 text-sm text-gray-700">
+                                        <p><span className="font-semibold">Fase:</span> {obra.fase}</p>
+                                        {contato && (
+                                            <div className="flex items-center">
+                                                <span className="font-semibold mr-2">Contato:</span>
+                                                <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center">
+                                                    {contato.nome} <PhoneIcon className="h-4 w-4 ml-1" />
+                                                </a>
+                                            </div>
+                                        )}
+                                        {proposta && (
+                                            <p>
+                                                <span className="font-semibold">Proposta:</span> {proposta.representada} - {proposta.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                            </p>
+                                        )}
+                                    </div>
+                                    <div className="mt-4 flex justify-end space-x-2">
+                                        <button onClick={() => onEditObra(obra)} className="p-2 bg-blue-100 text-blue-600 rounded-full hover:bg-blue-200 transition-colors">
+                                            <EditIcon className="h-5 w-5" />
+                                        </button>
+                                        <button onClick={() => onFlyTo([obra.lat, obra.lng])} className="p-2 bg-green-100 text-green-600 rounded-full hover:bg-green-200 transition-colors">
+                                            <MapIcon className="h-5 w-5" />
+                                        </button>
+                                    </div>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                ) : (
+                    <div className="text-center py-10 text-gray-500">
+                        <p>Nenhuma obra encontrada.</p>
+                        <p className="text-sm">Tente ajustar seus filtros.</p>
+                    </div>
+                )}
+            </div>
         </div>
-        <button onClick={onLogout} className="mt-8 bg-red-500 text-white py-2 px-6 rounded-md hover:bg-red-600 font-semibold">
-            Sair
-        </button>
-    </div>
-);
+    );
+};
+
+
+const TarefasTab: FC<{ obras: Obra[], onRoteirizar: (obras: Obra[]) => void }> = ({ obras, onRoteirizar }) => {
+    const [filter, setFilter] = useState<'dia' | 'futuras' | 'todas' | 'custom'>('dia');
+    const [customDate, setCustomDate] = useState(new Date().toISOString().split('T')[0]);
+
+    const todasTarefas = useMemo(() => {
+        return obras.flatMap(obra => 
+            obra.tarefas.map(tarefa => ({
+                ...tarefa,
+                obraNome: obra.nome,
+                construtora: obra.construtora,
+            }))
+        );
+    }, [obras]);
+
+    const filteredTarefas = useMemo(() => {
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0);
+
+        return todasTarefas.filter(tarefa => {
+            const dataTarefa = new Date(tarefa.data);
+            switch(filter) {
+                case 'dia':
+                    return dataTarefa.toDateString() === hoje.toDateString();
+                case 'futuras':
+                    return dataTarefa > hoje;
+                case 'custom':
+                    return new Date(tarefa.data).toISOString().split('T')[0] === customDate;
+                case 'todas':
+                default:
+                    return true;
+            }
+        }).sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime());
+    }, [todasTarefas, filter, customDate]);
+
+    const handleRoteirizar = () => {
+        const hoje = new Date().toDateString();
+        const obrasParaVisitar = obras.filter(obra => 
+            obra.tarefas.some(tarefa => 
+                tarefa.tipo === TipoTarefa.VISITA && 
+                new Date(tarefa.data).toDateString() === hoje
+            )
+        );
+        onRoteirizar(obrasParaVisitar);
+    };
+
+    const getStatus = (data: string): { text: string, color: string } => {
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0);
+        const dataTarefa = new Date(data);
+        if (dataTarefa < hoje) {
+            return { text: 'Atrasada', color: 'text-red-500' };
+        }
+        return { text: 'Em Dia', color: 'text-green-500' };
+    };
+
+    return (
+        <div className="h-full flex flex-col">
+            <div className="p-4 bg-white shadow-md z-10">
+                <div className="flex justify-between items-center">
+                    <h2 className="text-2xl font-bold">Tarefas</h2>
+                    <button onClick={handleRoteirizar} className="flex items-center bg-purple-500 text-white px-3 py-2 rounded-lg text-sm font-semibold">
+                        <RouteIcon className="h-5 w-5 mr-2" />
+                        Roteirizar Visitas
+                    </button>
+                </div>
+                <div className="mt-4 flex space-x-2">
+                    <button onClick={() => setFilter('dia')} className={`px-3 py-1 text-sm rounded-full ${filter === 'dia' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>Do Dia</button>
+                    <button onClick={() => setFilter('futuras')} className={`px-3 py-1 text-sm rounded-full ${filter === 'futuras' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>Futuras</button>
+                    <button onClick={() => setFilter('todas')} className={`px-3 py-1 text-sm rounded-full ${filter === 'todas' ? 'bg-blue-600 text-white' : 'bg-gray-200'}`}>Todas</button>
+                    <input type="date" value={customDate} onChange={e => { setCustomDate(e.target.value); setFilter('custom'); }} className="p-1 border rounded-md text-sm" />
+                </div>
+            </div>
+            <div className="flex-grow overflow-y-auto p-4 bg-gray-50">
+                 {filteredTarefas.length > 0 ? (
+                    <ul className="space-y-3">
+                        {filteredTarefas.map(tarefa => {
+                            const status = getStatus(tarefa.data);
+                            return (
+                                <li key={tarefa.id} className="bg-white border-l-4 border-blue-500 p-4 rounded-r-lg shadow-sm">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <p className="font-bold text-gray-800">{tarefa.titulo}</p>
+                                            <p className="text-sm text-gray-500">{tarefa.obraNome} - {tarefa.construtora}</p>
+                                        </div>
+                                        <div className={`text-xs font-bold ${status.color}`}>{status.text}</div>
+                                    </div>
+                                    <div className="mt-2 text-sm text-gray-700">
+                                        <p>{tarefa.descricao}</p>
+                                        <p className="mt-1"><span className="font-semibold">Data:</span> {new Date(tarefa.data).toLocaleDateString('pt-BR')} <span className="font-semibold ml-2">Tipo:</span> {tarefa.tipo}</p>
+                                    </div>
+                                </li>
+                            )
+                        })}
+                    </ul>
+                 ) : (
+                    <div className="text-center py-10 text-gray-500">
+                        <p>Nenhuma tarefa encontrada para este filtro.</p>
+                    </div>
+                 )}
+            </div>
+        </div>
+    );
+};
+
+const DashboardTab: FC<{ obras: Obra[], metas: Metas | null }> = ({ obras, metas }) => {
+    const [showPercentage, setShowPercentage] = useState(false);
+
+    const data = useMemo(() => {
+        const fechados = obras.filter(o => o.etapa === EtapaLead.FECHADO);
+        
+        const valorFechado = fechados.reduce((sum, obra) => sum + obra.propostas.reduce((pSum, p) => pSum + p.valor, 0), 0);
+        
+        const visitasRealizadas = obras.flatMap(o => o.tarefas).filter(t => t.tipo === TipoTarefa.VISITA && t.status === 'Concluída').length;
+        const ligacoesRealizadas = obras.flatMap(o => o.tarefas).filter(t => t.tipo === TipoTarefa.LIGACAO && t.status === 'Concluída').length;
+
+        const obrasPorEtapa = ETAPA_LEAD_OPTIONS.map(etapa => ({
+            name: etapa.label,
+            value: obras.filter(o => o.etapa === etapa.value).length,
+            fill: etapa.pinColor,
+        }));
+
+        const propostasPorRepresentada = Object.values(Representada).map(r => ({
+            name: r,
+            Quantidade: obras.flatMap(o => o.propostas).filter(p => p.representada === r).length,
+        }));
+        
+        const valorPropostaPorRepresentada = Object.values(Representada).map(r => ({
+            name: r,
+            Valor: obras.flatMap(o => o.propostas).reduce((sum, p) => p.representada === r ? sum + p.valor : sum, 0),
+        }));
+        
+        const valorFechadoPorRepresentada = Object.values(Representada).map(r => ({
+            name: r,
+            Valor: fechados.flatMap(o => o.propostas).reduce((sum, p) => p.representada === r ? sum + p.valor : sum, 0),
+        }));
+
+        const valorPorProdutoFechado = fechados.flatMap(o => o.propostas).reduce((acc, p) => {
+            acc[p.produto] = (acc[p.produto] || 0) + p.valor;
+            return acc;
+        }, {} as Record<string, number>);
+
+        const produtoData = Object.entries(valorPorProdutoFechado).map(([name, Valor]) => ({ name, Valor }));
+
+        return {
+            valorFechado,
+            visitasRealizadas,
+            ligacoesRealizadas,
+            obrasPorEtapa,
+            propostasPorRepresentada,
+            valorPropostaPorRepresentada,
+            valorFechadoPorRepresentada,
+            produtoData,
+        };
+    }, [obras]);
+
+    const getPercentage = (value: number, goal: number) => (goal > 0 ? (value / goal) * 100 : 0);
+
+    const renderMeta = (label: string, value: number, goal: number) => {
+        const percentage = getPercentage(value, goal);
+        return (
+            <div className="bg-gray-100 p-3 rounded-lg">
+                <p className="text-sm text-gray-600">{label}</p>
+                {showPercentage ? (
+                    <p className="text-2xl font-bold">{percentage.toFixed(1)}%</p>
+                ) : (
+                    <p className="text-xl font-bold">{value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0 })}</p>
+                )}
+                <div className="w-full bg-gray-300 rounded-full h-2 mt-1">
+                    <div className="bg-green-500 h-2 rounded-full" style={{ width: `${Math.min(percentage, 100)}%` }}></div>
+                </div>
+                <p className="text-xs text-right text-gray-500 mt-1">Meta: {goal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0 })}</p>
+            </div>
+        );
+    };
+
+    const renderCountMeta = (label: string, value: number, goal: number) => {
+        const percentage = getPercentage(value, goal);
+        return (
+            <div className="bg-gray-100 p-3 rounded-lg">
+                <p className="text-sm text-gray-600">{label}</p>
+                 {showPercentage ? (
+                    <p className="text-2xl font-bold">{percentage.toFixed(1)}%</p>
+                ) : (
+                    <p className="text-2xl font-bold">{value}</p>
+                )}
+                <div className="w-full bg-gray-300 rounded-full h-2 mt-1">
+                    <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${Math.min(percentage, 100)}%` }}></div>
+                </div>
+                <p className="text-xs text-right text-gray-500 mt-1">Meta: {goal}</p>
+            </div>
+        );
+    }
+    
+    if (!metas) return <div className="p-4">Carregando dados do dashboard...</div>;
+
+    return (
+        <div className="h-full flex flex-col">
+            <div className="p-4 bg-white shadow-md z-10">
+                 <div className="flex justify-between items-center">
+                    <h2 className="text-2xl font-bold">Dashboard</h2>
+                    <div className="flex items-center">
+                        <span className="text-sm mr-2">Metas em %</span>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" checked={showPercentage} onChange={() => setShowPercentage(!showPercentage)} className="sr-only peer" />
+                            <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div className="flex-grow overflow-y-auto p-4 bg-gray-50 space-y-6">
+                {/* KPIs */}
+                <div className="grid grid-cols-3 gap-4 text-center">
+                    <div className="bg-white p-4 rounded-lg shadow"><p className="text-sm text-gray-500">Valor Fechado</p><p className="text-2xl font-bold">{data.valorFechado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p></div>
+                    <div className="bg-white p-4 rounded-lg shadow"><p className="text-sm text-gray-500">Visitas Realizadas</p><p className="text-2xl font-bold">{data.visitasRealizadas}</p></div>
+                    <div className="bg-white p-4 rounded-lg shadow"><p className="text-sm text-gray-500">Ligações Realizadas</p><p className="text-2xl font-bold">{data.ligacoesRealizadas}</p></div>
+                </div>
+
+                {/* Metas */}
+                 <div className="bg-white p-4 rounded-lg shadow">
+                    <h3 className="font-bold text-lg mb-2">Metas do Mês</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {renderMeta("Vendas Totais", data.valorFechado, metas.vendasTotais)}
+                        {renderCountMeta("Visitas", data.visitasRealizadas, metas.visitas)}
+                        {renderCountMeta("Ligações", data.ligacoesRealizadas, metas.ligacoes)}
+                    </div>
+                 </div>
+
+                {/* Charts */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="bg-white p-4 rounded-lg shadow h-80">
+                         <h3 className="font-bold text-lg mb-2">Obras por Etapa</h3>
+                         <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie data={data.obrasPorEtapa} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                                     {data.obrasPorEtapa.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.fill} />)}
+                                </Pie>
+                                <Tooltip />
+                                <Legend />
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </div>
+                     <div className="bg-white p-4 rounded-lg shadow h-80">
+                         <h3 className="font-bold text-lg mb-2">Propostas por Representada</h3>
+                         <ResponsiveContainer width="100%" height="100%">
+                             <BarChart data={data.propostasPorRepresentada} margin={{ top: 5, right: 20, left: -10, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="name" />
+                                <YAxis />
+                                <Tooltip />
+                                <Bar dataKey="Quantidade" fill="#8884d8" />
+                            </BarChart>
+                         </ResponsiveContainer>
+                    </div>
+                     <div className="bg-white p-4 rounded-lg shadow h-80">
+                         <h3 className="font-bold text-lg mb-2">Valor em Proposta por Representada</h3>
+                         <ResponsiveContainer width="100%" height="100%">
+                             <BarChart data={data.valorPropostaPorRepresentada} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="name" />
+                                <YAxis tickFormatter={(value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(value as number)} />
+                                <Tooltip formatter={(value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value as number)} />
+                                <Bar dataKey="Valor" fill="#82ca9d" />
+                            </BarChart>
+                         </ResponsiveContainer>
+                    </div>
+                     <div className="bg-white p-4 rounded-lg shadow h-80">
+                         <h3 className="font-bold text-lg mb-2">Valor Fechado por Representada</h3>
+                         <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={data.valorFechadoPorRepresentada} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="name" />
+                                <YAxis tickFormatter={(value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(value as number)} />
+                                <Tooltip formatter={(value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value as number)} />
+                                <Bar dataKey="Valor" fill="#ffc658" />
+                            </BarChart>
+                         </ResponsiveContainer>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const PerfilTab: FC<{ 
+    user: User, 
+    metas: Metas | null,
+    onLogout: () => void,
+    onUpdateMetas: (newMetas: Metas) => Promise<void> 
+}> = ({ user, metas, onLogout, onUpdateMetas }) => {
+    const [isMetasModalOpen, setIsMetasModalOpen] = useState(false);
+    const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+
+    return (
+        <div className="p-4 flex flex-col items-center bg-gray-50 h-full">
+            <h2 className="text-2xl font-bold mb-4">Perfil</h2>
+            <div className="bg-white p-6 rounded-lg shadow text-center w-full max-w-sm">
+                <UserIcon className="h-16 w-16 mx-auto text-gray-400 mb-4" />
+                <p className="font-semibold text-lg">{user.nomeCompleto}</p>
+                <p className="text-gray-600">{user.email}</p>
+            </div>
+            <div className="mt-6 w-full max-w-sm space-y-3">
+                <button onClick={() => setIsMetasModalOpen(true)} className="w-full bg-blue-500 text-white py-2 px-4 rounded-md hover:bg-blue-600 font-semibold">
+                    Editar Metas
+                </button>
+                 <button onClick={() => setIsPasswordModalOpen(true)} className="w-full bg-gray-500 text-white py-2 px-4 rounded-md hover:bg-gray-600 font-semibold">
+                    Trocar Senha
+                </button>
+                <button onClick={onLogout} className="w-full bg-red-500 text-white py-2 px-4 rounded-md hover:bg-red-600 font-semibold">
+                    Sair
+                </button>
+            </div>
+            {isMetasModalOpen && metas && (
+                <MetasModal 
+                    isOpen={isMetasModalOpen}
+                    onClose={() => setIsMetasModalOpen(false)}
+                    currentMetas={metas}
+                    onSave={onUpdateMetas}
+                />
+            )}
+            {isPasswordModalOpen && (
+                <ChangePasswordModal 
+                    isOpen={isPasswordModalOpen}
+                    onClose={() => setIsPasswordModalOpen(false)}
+                />
+            )}
+        </div>
+    );
+};
+
+const MetasModal: FC<{
+    isOpen: boolean,
+    onClose: () => void,
+    currentMetas: Metas,
+    onSave: (newMetas: Metas) => Promise<void>
+}> = ({ isOpen, onClose, currentMetas, onSave }) => {
+    const [metas, setMetas] = useState<Metas>(currentMetas);
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleSave = async () => {
+        setIsLoading(true);
+        await onSave(metas);
+        setIsLoading(false);
+        onClose();
+    };
+
+    if (!isOpen) return null;
+
+    return (
+         <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center">
+            <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md m-4">
+                <h3 className="text-xl font-bold mb-4">Editar Metas</h3>
+                <div className="space-y-3">
+                    <div>
+                        <label className="text-sm">Vendas Totais (R$)</label>
+                        <input type="number" value={metas.vendasTotais} onChange={e => setMetas({...metas, vendasTotais: +e.target.value})} className="w-full p-2 border rounded"/>
+                    </div>
+                     <div>
+                        <label className="text-sm">Nº de Visitas</label>
+                        <input type="number" value={metas.visitas} onChange={e => setMetas({...metas, visitas: +e.target.value})} className="w-full p-2 border rounded"/>
+                    </div>
+                     <div>
+                        <label className="text-sm">Nº de Ligações</label>
+                        <input type="number" value={metas.ligacoes} onChange={e => setMetas({...metas, ligacoes: +e.target.value})} className="w-full p-2 border rounded"/>
+                    </div>
+                </div>
+                <div className="mt-6 flex justify-end space-x-3">
+                    <button onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-md">Cancelar</button>
+                    <button onClick={handleSave} disabled={isLoading} className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-400">
+                        {isLoading ? 'Salvando...' : 'Salvar'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    )
+};
+
+const ChangePasswordModal: FC<{ isOpen: boolean, onClose: () => void }> = ({ isOpen, onClose }) => {
+    const [oldPassword, setOldPassword] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleChangePassword = async () => {
+        setError('');
+        setSuccess('');
+        if (newPassword !== confirmPassword) {
+            setError("As novas senhas não coincidem.");
+            return;
+        }
+        if (!auth.currentUser) return;
+        
+        setIsLoading(true);
+        try {
+            const credential = EmailAuthProvider.credential(auth.currentUser.email!, oldPassword);
+            await reauthenticateWithCredential(auth.currentUser, credential);
+            await updatePassword(auth.currentUser, newPassword);
+            setSuccess("Senha alterada com sucesso!");
+            setTimeout(onClose, 2000);
+        } catch (error: any) {
+            if (error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+                setError("A senha antiga está incorreta.");
+            } else {
+                 setError("Ocorreu um erro ao alterar a senha.");
+            }
+        } finally {
+            setIsLoading(false);
+        }
+    };
+    
+    if (!isOpen) return null;
+
+    return (
+         <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center">
+            <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md m-4">
+                <h3 className="text-xl font-bold mb-4">Alterar Senha</h3>
+                <div className="space-y-3">
+                    <input type="password" placeholder="Senha Antiga" value={oldPassword} onChange={e => setOldPassword(e.target.value)} className="w-full p-2 border rounded"/>
+                    <input type="password" placeholder="Nova Senha" value={newPassword} onChange={e => setNewPassword(e.target.value)} className="w-full p-2 border rounded"/>
+                    <input type="password" placeholder="Confirmar Nova Senha" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} className="w-full p-2 border rounded"/>
+                </div>
+                {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
+                {success && <p className="text-green-500 text-sm mt-2">{success}</p>}
+                <div className="mt-6 flex justify-end space-x-3">
+                    <button onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-md">Cancelar</button>
+                    <button onClick={handleChangePassword} disabled={isLoading || !!success} className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-400">
+                        {isLoading ? 'Alterando...' : 'Alterar Senha'}
+                    </button>
+                </div>
+            </div>
+         </div>
+    );
+};
+
 
 // --- MAIN APP COMPONENT ---
 export default function App() {
@@ -594,9 +1153,17 @@ export default function App() {
     const [isObraModalOpen, setIsObraModalOpen] = useState(false);
     const [selectedObra, setSelectedObra] = useState<Partial<Obra> | null>(null);
 
+    const handleMockLogin = useCallback((loggedInUser: User) => {
+        setIsLoadingData(true);
+        setUser(loggedInUser);
+        setObras(MOCK_OBRAS);
+        setMetas(MOCK_METAS);
+        setRegions([]);
+        setIsLoadingData(false);
+    }, []);
 
     const fetchData = useCallback(async (userId: string) => {
-        if (!db) {
+        if (!isFirebaseConfigured || !db) {
             console.error("Firestore is not initialized.");
             setIsLoadingData(false);
             return;
@@ -607,8 +1174,7 @@ export default function App() {
             const obrasQuery = query(collection(db, `users/${userId}/obras`));
             const obrasSnapshot = await getDocs(obrasQuery);
             const obrasData = obrasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Obra));
-            setObras(obrasData);
-
+            
             // Fetch Regions
             const regionsQuery = query(collection(db, `users/${userId}/regions`));
             const regionsSnapshot = await getDocs(regionsQuery);
@@ -624,15 +1190,69 @@ export default function App() {
                  setMetas({ vendasTotais: 0, visitas: 0, ligacoes: 0, porRepresentada: {} as Record<Representada, number> });
             }
 
+            // Check for inactive obras
+            const ninetyDaysAgo = new Date();
+            ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+            const batch = writeBatch(db);
+            let hasChanges = false;
+            
+            const updatedObras = obrasData.map(obra => {
+                const lastUpdatedDate = new Date(obra.lastUpdated);
+                const isInactive = lastUpdatedDate < ninetyDaysAgo;
+                const canBecomeInactive = ![EtapaLead.FECHADO, EtapaLead.PERDIDO, EtapaLead.INATIVO].includes(obra.etapa);
+                
+                if (isInactive && canBecomeInactive) {
+                    hasChanges = true;
+                    const updatedObra = {
+                        ...obra,
+                        etapa: EtapaLead.INATIVO,
+                        lastUpdated: new Date().toISOString(),
+                        tarefas: [
+                            ...obra.tarefas,
+                            {
+                                id: `task_${Date.now()}`,
+                                obraId: obra.id,
+                                titulo: 'Verificar obra inativa',
+                                tipo: TipoTarefa.LIGACAO,
+                                data: new Date().toISOString(),
+                                descricao: 'Obra marcada como inativa por falta de atividade. Entrar em contato para reativar.',
+                                status: 'Pendente'
+                            } as Tarefa
+                        ]
+                    };
+                    const obraRef = doc(db, `users/${userId}/obras`, obra.id);
+                    batch.update(obraRef, { 
+                        etapa: updatedObra.etapa, 
+                        lastUpdated: updatedObra.lastUpdated,
+                        tarefas: updatedObra.tarefas
+                    });
+                    return updatedObra;
+                }
+                return obra;
+            });
+            
+            if (hasChanges) {
+                await batch.commit();
+                setObras(updatedObras);
+                alert("Algumas obras foram marcadas como inativas por falta de atividade e tarefas foram criadas.");
+            } else {
+                setObras(obrasData);
+            }
+
+
         } catch (error) {
             console.error("Error fetching data:", error);
-            // Optionally, set an error state to show in the UI
         } finally {
             setIsLoadingData(false);
         }
     }, []);
 
     useEffect(() => {
+        if (!isFirebaseConfigured) {
+            setIsLoadingAuth(false);
+            return;
+        }
+
         if (!auth || !db) {
             setIsLoadingAuth(false);
             return;
@@ -645,7 +1265,6 @@ export default function App() {
                 let userProfileData: User;
 
                 if (!userDocSnap.exists()) {
-                    // Primeiro login de um usuário verificado, crie seu perfil no Firestore.
                     console.log(`Primeiro login para ${firebaseUser.uid}, criando perfil no Firestore.`);
                     const newUserProfile: User = {
                         id: firebaseUser.uid,
@@ -655,16 +1274,12 @@ export default function App() {
 
                     try {
                         const batch = writeBatch(db);
-                        
-                        // Define o documento do perfil do usuário
                         batch.set(userDocRef, newUserProfile);
-
-                        // Define o documento inicial de metas
                         const metasDocRef = doc(db, `users/${firebaseUser.uid}/data/metas`);
                         batch.set(metasDocRef, {
-                            vendasTotais: 0,
-                            visitas: 0,
-                            ligacoes: 0,
+                            vendasTotais: 100000,
+                            visitas: 20,
+                            ligacoes: 40,
                             porRepresentada: {},
                         } as Metas);
                         
@@ -696,6 +1311,10 @@ export default function App() {
     }, [fetchData]);
 
     const handleLogout = async () => {
+        if (!isFirebaseConfigured) {
+            setUser(null);
+            return;
+        }
         if (!auth) return;
         await signOut(auth);
     };
@@ -731,18 +1350,31 @@ export default function App() {
     };
     
     const saveRegion = async (regionData: Omit<Region, 'id'>) => {
-      if (!user || !db) return;
-      try {
-        const regionCollRef = collection(db, `users/${user.id}/regions`);
-        const newDocRef = await addDoc(regionCollRef, regionData);
-        setRegions([...regions, { ...regionData, id: newDocRef.id }]);
-      } catch (e) {
-        console.error("Error adding region:", e);
-      }
+        if (!isFirebaseConfigured) {
+            const newRegion = { ...regionData, id: `mock_region_${Date.now()}` };
+            setRegions(prev => [...prev, newRegion]);
+            return;
+        }
+
+        if (!user || !db) return;
+        try {
+            const regionCollRef = collection(db, `users/${user.id}/regions`);
+            const newDocRef = await addDoc(regionCollRef, regionData);
+            setRegions([...regions, { ...regionData, id: newDocRef.id }]);
+        } catch (e) {
+            console.error("Error adding region:", e);
+        }
     };
     
     const deleteRegion = async (id: string) => {
-        if (!user || !db || !confirm('Tem certeza que deseja excluir esta região?')) return;
+        if (!confirm('Tem certeza que deseja excluir esta região?')) return;
+        
+        if (!isFirebaseConfigured) {
+            setRegions(prev => prev.filter(r => r.id !== id));
+            return;
+        }
+        
+        if (!user || !db) return;
         try {
             const regionDocRef = doc(db, `users/${user.id}/regions`, id);
             await deleteDoc(regionDocRef);
@@ -755,6 +1387,12 @@ export default function App() {
     const editObra = (obra: Obra) => openLeadForm(undefined, obra);
 
     const updateMetas = async (newMetas: Metas) => {
+        if (!isFirebaseConfigured) {
+            setMetas(newMetas);
+            alert("Metas atualizadas (modo demonstração).");
+            return;
+        }
+
         if (!user || !db) return;
         try {
             const metasDocRef = doc(db, `users/${user.id}/data/metas`);
@@ -766,6 +1404,17 @@ export default function App() {
             alert("Não foi possível atualizar as metas.");
         }
     };
+    
+    const handleRoteirizar = (obrasParaVisitar: Obra[]) => {
+        if(obrasParaVisitar.length > 0) {
+            setRouteToDraw(obrasParaVisitar);
+            setActiveTab('map');
+            // Fly to the first obra in the route
+            handleFlyTo([obrasParaVisitar[0].lat, obrasParaVisitar[0].lng]);
+        } else {
+            alert("Nenhuma tarefa de visita para hoje!");
+        }
+    }
 
     const LoadingOverlay = () => (
         <div className="absolute inset-0 bg-gray-500 bg-opacity-50 flex justify-center items-center z-50">
@@ -779,7 +1428,7 @@ export default function App() {
     }
 
     if (!user) {
-        return <AuthManager page={authPage} setPage={setAuthPage} />;
+        return <AuthManager page={authPage} setPage={setAuthPage} onMockLogin={handleMockLogin} />;
     }
     
     if (isLoadingData) {
@@ -802,16 +1451,13 @@ export default function App() {
                             onNavigate={navigate}
                          />;
             case 'list':
-                 // This tab will be fully implemented in a future step.
                 return <ListaTab obras={obras} onEditObra={editObra} onFlyTo={handleFlyTo} />;
             case 'tasks':
-                 // This tab will be fully implemented in a future step.
-                return <div className="p-4">Tarefas em breve...</div>;
+                return <TarefasTab obras={obras} onRoteirizar={handleRoteirizar} />;
             case 'dashboard':
-                 // This tab will be fully implemented in a future step.
-                return <div className="p-4">Dashboard em breve...</div>;
+                return <DashboardTab obras={obras} metas={metas} />;
             case 'profile':
-                return <PerfilTab user={user} onLogout={handleLogout} />;
+                return <PerfilTab user={user} metas={metas} onLogout={handleLogout} onUpdateMetas={updateMetas} />;
             default:
                 return null;
         }
