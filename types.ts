@@ -1,104 +1,104 @@
-import { LatLngExpression } from 'leaflet';
+import type * as L from 'leaflet';
 
 export enum EtapaLead {
-  LEAD = 'Lead',
-  NEGOCIACAO = 'Negociação',
-  FECHADO = 'Fechado',
-  PERDIDO = 'Perdido',
-  INATIVO = 'Inativo',
+    LEAD = 'Lead',
+    CONTATO_INICIAL = 'Contato Inicial',
+    VISITA_AGENDADA = 'Visita Agendada',
+    NEGOCIACAO = 'Negociação',
+    FECHADO = 'Fechado',
+    PERDIDO = 'Perdido',
+    INATIVO = 'Inativo',
 }
 
 export enum FaseObra {
-  FUNDACAO = 'Fundação',
-  ESTRUTURA = 'Estrutura',
-  ALVENARIA = 'Alvenaria',
-  INSTALACOES = 'Instalações',
-  ACABAMENTO = 'Acabamento',
-  FACHADA = 'Fachada',
-  ENTREGUE = 'Entregue',
+    PROSPECCAO = 'Prospecção',
+    FUNDACAO = 'Fundação',
+    ESTRUTURA = 'Estrutura',
+    ALVENARIA = 'Alvenaria',
+    INSTALACOES = 'Instalações',
+    ACABAMENTO = 'Acabamento',
+    FINALIZADA = 'Finalizada',
 }
 
 export enum TipoTarefa {
-  LIGACAO = 'Ligação',
-  VISITA = 'Visita',
-  EMAIL = 'E-mail',
+    LIGACAO = 'Ligação',
+    VISITA = 'Visita',
+    EMAIL = 'E-mail',
+    PROPOSTA = 'Proposta',
+    OUTRO = 'Outro',
 }
 
 export enum Representada {
-  DM2 = 'DM2',
-  ALUMBRA = 'ALUMBRA',
-  MGM = 'MGM',
-  ROCA = 'ROCA',
-  CONSTRUCOM = 'CONSTRUCOM',
-}
-
-export interface Contato {
-  id: string;
-  nome: string;
-  telefone: string;
-  email: string;
-}
-
-export interface Tarefa {
-  id: string;
-  obraId: string;
-  titulo: string;
-  tipo: TipoTarefa;
-  data: string; // ISO string for datetime
-  descricao: string;
-  status: 'Pendente' | 'Concluída';
-}
-
-export interface Proposta {
-  id: string;
-  representada: Representada;
-  produto: string;
-  valor: number;
-  anexoNome?: string;
-  anexoUrl?: string; // URL from Firebase Storage
-  anexoPath?: string; // Path in Firebase Storage for deletion
-}
-
-export interface Obra {
-  id: string;
-  nome: string;
-  dataCadastro: string; // YYYY-MM-DD
-  fase: FaseObra;
-  cnpj?: string;
-  contatos: Contato[];
-  etapa: EtapaLead;
-  construtora: string;
-  fotos: string[]; // Array of image URLs from Firebase Storage
-  tarefas: Tarefa[];
-  propostas: Proposta[];
-  lat: number;
-  lng: number;
-  lastUpdated: string; // ISO string for inactivity check
+    REP_A = 'Representada A',
+    REP_B = 'Representada B',
+    REP_C = 'Representada C',
+    REP_D = 'Representada D',
 }
 
 export interface User {
-  id: string; // Firebase UID
-  nomeCompleto: string;
-  email: string;
+    id: string;
+    nomeCompleto: string;
+    email: string;
+}
+
+export interface Contato {
+    id: string;
+    nome: string;
+    telefone: string;
+    email: string;
+    cargo: string;
+}
+
+export interface Tarefa {
+    id: string;
+    obraId: string;
+    titulo: string;
+    descricao: string;
+    data: string; // ISO string
+    tipo: TipoTarefa;
+    status: 'Pendente' | 'Concluída';
+}
+
+export interface Proposta {
+    id: string;
+    representada: Representada;
+    produtos: string[];
+    valor: number;
+    data: string; // ISO string
+}
+
+export interface Foto {
+    url: string;
+    refPath: string;
+}
+
+export interface Obra {
+    id: string;
+    userId: string;
+    nome: string;
+    construtora: string;
+    lat: number;
+    lng: number;
+    etapa: EtapaLead;
+    fase: FaseObra;
+    dataCadastro: string; // YYYY-MM-DD
+    lastUpdated: string; // ISO string
+    contatos: Contato[];
+    tarefas: Tarefa[];
+    propostas: Proposta[];
+    fotos: Foto[];
 }
 
 export interface Metas {
-  id: string; // YYYY-MM format
-  vendasTotais: number;
-  visitas: number;
-  ligacoes: number;
-  porRepresentada: Record<Representada, number>;
+    id: string; // YYYY-MM
+    vendasTotais: number;
+    visitas: number;
+    ligacoes: number;
+    porRepresentada: Record<Representada, number>;
 }
 
 export interface Region {
-  id: string;
-  points: LatLngExpression[];
-  color: string;
-}
-
-// FIX: Added missing BackupData interface to be exported.
-export interface BackupData {
-  obras: Obra[];
-  metas: Metas;
-  regions: Region[];
+    id: string;
+    points: L.LatLngExpression[];
+    color: string;
 }
