@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useMemo, FC, useCallback, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polyline, Polygon, CircleMarker } from 'react-leaflet';
-// FIX: Changed leaflet import from 'L' to 'leaflet' to avoid type conflicts.
-import leaflet, { LatLngExpression } from 'leaflet';
+// FIX: Standardized leaflet import to use the conventional 'L' namespace to resolve react-leaflet type conflicts.
+import L from 'leaflet';
 import * as Recharts from 'recharts';
 import { auth, db, storage, isFirebaseConfigured } from './firebase';
 import { 
@@ -103,7 +104,7 @@ const AuthLayout: FC<{ title: string, subtitle: string, children: React.ReactNod
           <BriefcaseIcon className="h-10 w-10 text-white" />
         </div>
         <h1 className="text-3xl font-bold text-gray-800 mt-4">{title}</h1>
-        <p className="text-gray-500">{subtitle}</p>
+        <p className="text-gray-500 ">{subtitle}</p>
       </div>
       {children}
     </div>
@@ -387,8 +388,7 @@ const MapFlyToController: FC<{ flyToTarget: [number, number] | null; onFlyToComp
     return null; 
 };
 
-// FIX: Changed leaflet import from 'L' to 'leaflet' to avoid type conflicts.
-const MapClickHandler: FC<{ onClick: (e: leaflet.LeafletMouseEvent) => void }> = ({ onClick }) => {
+const MapClickHandler: FC<{ onClick: (e: L.LeafletMouseEvent) => void }> = ({ onClick }) => {
     useMapEvents({
         click(e) {
             onClick(e);
@@ -415,10 +415,9 @@ const MapTab: React.FC<{
   const [filterEtapa, setFilterEtapa] = useState<EtapaLead | 'todos'>('todos');
   const [filterFase, setFilterFase] = useState<FaseObra | 'todos'>('todos');
   const [isDrawing, setIsDrawing] = useState(false);
-  const [currentDrawingPoints, setCurrentDrawingPoints] = useState<LatLngExpression[]>([]);
+  const [currentDrawingPoints, setCurrentDrawingPoints] = useState<L.LatLngExpression[]>([]);
   const [showRegions, setShowRegions] = useState(true);
-  // FIX: Changed leaflet import from 'L' to 'leaflet' to avoid type conflicts.
-  const [map, setMap] = useState<leaflet.Map | null>(null);
+  const [map, setMap] = useState<L.Map | null>(null);
 
   useEffect(() => {
     navigator.geolocation.getCurrentPosition(
@@ -457,19 +456,13 @@ const MapTab: React.FC<{
     setIsDrawing(false);
   };
 
-   // FIX: Changed leaflet import from 'L' to 'leaflet' to avoid type conflicts.
-   const handleMapClick = (e: leaflet.LeafletMouseEvent) => {
+   const handleMapClick = (e: L.LeafletMouseEvent) => {
     if (isDrawing) {
         setCurrentDrawingPoints([...currentDrawingPoints, e.latlng]);
+    } else {
+        openLeadForm({ lat: e.latlng.lat, lng: e.latlng.lng });
     }
   };
-
-  const handleAddPinAtCenter = useCallback(() => {
-    if (map) {
-      const center = map.getCenter();
-      openLeadForm({ lat: center.lat, lng: center.lng });
-    }
-  }, [map, openLeadForm]);
   
   const filteredObras = useMemo(() => {
     return obras.filter(obra => {
@@ -482,8 +475,7 @@ const MapTab: React.FC<{
   
   const customMarkerIcon = (color: string) => {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="36" height="36"><path fill="${color}" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>`;
-      // FIX: Changed leaflet import from 'L' to 'leaflet' to avoid type conflicts.
-      return leaflet.divIcon({
+      return L.divIcon({
           html: svg,
           className: 'custom-pin',
           iconSize: [36, 36],
@@ -493,7 +485,7 @@ const MapTab: React.FC<{
   };
 
   const routeLatLngs = useMemo(() => {
-    return routeToDraw ? routeToDraw.map(obra => [obra.lat, obra.lng] as LatLngExpression) : [];
+    return routeToDraw ? routeToDraw.map(obra => [obra.lat, obra.lng] as L.LatLngExpression) : [];
   }, [routeToDraw]);
 
   if (!userPosition) return <div className="flex justify-center items-center h-full">Carregando mapa...</div>;
@@ -547,12 +539,6 @@ const MapTab: React.FC<{
 
       </MapContainer>
 
-      {/* Center Crosshair */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
-        <PlusIcon className="h-10 w-10 text-red-500 opacity-80 drop-shadow-lg" />
-      </div>
-
-
       {/* Controls Overlay */}
       <div className="absolute top-2 left-2 z-10 bg-white p-2 rounded-md shadow-lg flex flex-col space-y-2">
          <select value={filterEtapa} onChange={e => setFilterEtapa(e.target.value as EtapaLead | 'todos')} className="p-1 border rounded">
@@ -567,9 +553,6 @@ const MapTab: React.FC<{
       </div>
       
       <div className="absolute bottom-16 right-2 z-10 flex flex-col space-y-2">
-            <button onClick={handleAddPinAtCenter} title="Adicionar Obra no Centro do Mapa" className="bg-white p-2 rounded-full shadow-lg">
-                <PlusCircleIcon className="h-6 w-6 text-blue-600" />
-            </button>
             <button onClick={handleRecenter} title="Centralizar na sua localização" className="bg-white p-2 rounded-full shadow-lg">
                 <MyLocationIcon className="h-6 w-6 text-blue-600" />
             </button>
@@ -1208,6 +1191,71 @@ const ChangePasswordModal: FC<{ isOpen: boolean, onClose: () => void }> = ({ isO
     );
 };
 
+const ObraModal: FC<{
+    isOpen: boolean,
+    onClose: () => void,
+    obraData: Partial<Obra>,
+    onSave: (obra: Partial<Obra>) => void
+}> = ({ isOpen, onClose, obraData, onSave }) => {
+    const [formData, setFormData] = useState<Partial<Obra>>(obraData);
+
+    useEffect(() => {
+        setFormData(obraData);
+    }, [obraData]);
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+    
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!formData.nome || !formData.construtora) {
+            alert("Nome da Obra e Construtora são obrigatórios.");
+            return;
+        }
+        onSave(formData);
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+            <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg max-h-full overflow-y-auto">
+                <form onSubmit={handleSubmit}>
+                    <h3 className="text-xl font-bold mb-4">{formData.id ? 'Editar Obra' : 'Adicionar Nova Obra'}</h3>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Nome da Obra</label>
+                            <input type="text" name="nome" value={formData.nome || ''} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Construtora</label>
+                            <input type="text" name="construtora" value={formData.construtora || ''} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Etapa do Lead</label>
+                            <select name="etapa" value={formData.etapa || ''} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                                {ETAPA_LEAD_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                            </select>
+                        </div>
+                         <div>
+                            <label className="block text-sm font-medium text-gray-700">Fase da Obra</label>
+                            <select name="fase" value={formData.fase || ''} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                                {FASE_OBRA_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                    <div className="mt-6 flex justify-end space-x-3">
+                        <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-md">Cancelar</button>
+                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md">Salvar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
 
 // --- MAIN APP COMPONENT ---
 export default function App() {
@@ -1407,6 +1455,7 @@ export default function App() {
                 lng: coords.lng,
                 dataCadastro: new Date().toISOString().split('T')[0],
                 etapa: EtapaLead.LEAD,
+                fase: FaseObra.PROSPECCAO,
                 contatos: [],
                 tarefas: [],
                 propostas: [],
@@ -1415,6 +1464,50 @@ export default function App() {
         }
         setIsObraModalOpen(true);
     };
+
+    const handleSaveObra = async (obraData: Partial<Obra>) => {
+        if (!user) return;
+
+        const obraToSave = {
+            ...obraData,
+            userId: user.id,
+            lastUpdated: new Date().toISOString(),
+        };
+
+        if (!isFirebaseConfigured) {
+            if (obraToSave.id) { // Update
+                 setObras(prev => prev.map(o => o.id === obraToSave.id ? obraToSave as Obra : o));
+            } else { // Create
+                const newObra = { ...obraToSave, id: `mock_obra_${Date.now()}` } as Obra;
+                setObras(prev => [...prev, newObra]);
+            }
+        } else {
+            try {
+                if (obraToSave.id) {
+                    const obraRef = doc(db, `users/${user.id}/obras`, obraToSave.id);
+                    await setDoc(obraRef, obraToSave, { merge: true });
+                    setObras(prev => prev.map(o => o.id === obraToSave.id ? obraToSave as Obra : o));
+                } else {
+                    const obrasCollRef = collection(db, `users/${user.id}/obras`);
+                    const { id, ...dataToSave } = obraToSave; // Don't save undefined id
+                    const newDocRef = await addDoc(obrasCollRef, dataToSave);
+                    setObras(prev => [...prev, { ...obraToSave, id: newDocRef.id } as Obra]);
+                }
+            } catch(e) {
+                console.error("Erro ao salvar obra:", e);
+                alert("Erro ao salvar obra. Verifique o console para mais detalhes.");
+                return;
+            }
+        }
+
+        setIsObraModalOpen(false);
+        setSelectedObra(null);
+    };
+
+    const handleCloseModal = () => {
+        setIsObraModalOpen(false);
+        setSelectedObra(null);
+    }
 
     const clearRoute = () => setRouteToDraw(null);
     const onFlyToComplete = () => setFlyToTarget(null);
@@ -1575,6 +1668,14 @@ export default function App() {
                     <span className="text-xs">Perfil</span>
                 </button>
             </nav>
+            {isObraModalOpen && selectedObra && (
+                <ObraModal 
+                    isOpen={isObraModalOpen}
+                    onClose={handleCloseModal}
+                    obraData={selectedObra}
+                    onSave={handleSaveObra}
+                />
+            )}
         </div>
     );
 }
