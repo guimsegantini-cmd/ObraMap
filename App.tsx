@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useMemo, FC, useCallback, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polyline, Polygon, CircleMarker } from 'react-leaflet';
-// FIX: Standardized leaflet import to use the conventional 'L' namespace to resolve react-leaflet type conflicts.
+// FIX: Reordered leaflet import to be before react-leaflet to resolve type conflicts.
 import * as L from 'leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polyline, Polygon, CircleMarker } from 'react-leaflet';
 import * as Recharts from 'recharts';
 import { auth, db, storage, isFirebaseConfigured } from './firebase';
 import { 
@@ -495,7 +496,8 @@ const MapTab: React.FC<{
         center={userPosition}
         zoom={13}
         className="h-full w-full z-0"
-        ref={setMap}
+        // FIX: Changed ref to whenCreated to be compatible with react-leaflet v3 and fix type errors.
+        whenCreated={setMap}
       >
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -649,7 +651,7 @@ const ListaTab: FC<{
                     <ul className="space-y-3">
                         {filteredObras.map(obra => {
                             const contato = obra.contatos[0];
-                            const proposta = obra.propostas[0];
+                            const proposta = obra.propostas[obra.propostas.length - 1]; // Get latest
                             const whatsappLink = contato ? `https://wa.me/55${contato.telefone.replace(/\D/g, '')}`: '#';
 
                             return (
@@ -668,7 +670,7 @@ const ListaTab: FC<{
                                             <div className="flex items-center">
                                                 <span className="font-semibold mr-2">Contato:</span>
                                                 <a href={whatsappLink} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline flex items-center">
-                                                    {contato.nome} <PhoneIcon className="h-4 w-4 ml-1" />
+                                                    {contato.nome} ({contato.telefone}) <PhoneIcon className="h-4 w-4 ml-1" />
                                                 </a>
                                             </div>
                                         )}
@@ -1201,15 +1203,25 @@ const ObraModal: FC<{
     onSave: (obra: Partial<Obra>) => void;
 }> = ({ isOpen, onClose, obraData, onSave }) => {
     const [formData, setFormData] = useState<Partial<Obra>>({});
-    const [activeTab, setActiveTab] = useState('detalhes');
-
+    
+    const [isAddingContact, setIsAddingContact] = useState(false);
     const [newContact, setNewContact] = useState<Partial<Contato>>({});
+    
+    const [isAddingTask, setIsAddingTask] = useState(false);
     const [newTask, setNewTask] = useState<Partial<Tarefa>>({ tipo: TipoTarefa.LIGACAO, data: new Date().toISOString().split('T')[0] });
+    
+    const [isAddingProposta, setIsAddingProposta] = useState(false);
     const [newProposta, setNewProposta] = useState<Partial<Proposta>>({ representada: Representada.REP_A, produtos: [] });
 
     useEffect(() => {
         setFormData(obraData);
-        setActiveTab('detalhes'); // Reset tab on new data
+        // Reset add forms
+        setIsAddingContact(false);
+        setIsAddingTask(false);
+        setIsAddingProposta(false);
+        setNewContact({});
+        setNewTask({ tipo: TipoTarefa.LIGACAO, data: new Date().toISOString().split('T')[0] });
+        setNewProposta({ representada: Representada.REP_A, produtos: [] });
     }, [obraData]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -1225,6 +1237,7 @@ const ObraModal: FC<{
         const updatedContacts = [...(formData.contatos || []), { ...newContact, id: `c_${Date.now()}` } as Contato];
         setFormData(prev => ({ ...prev, contatos: updatedContacts }));
         setNewContact({});
+        setIsAddingContact(false);
     };
     
     const handleRemoveContact = (id: string) => {
@@ -1240,6 +1253,7 @@ const ObraModal: FC<{
         const updatedTasks = [...(formData.tarefas || []), { ...newTask, id: `t_${Date.now()}`, status: 'Pendente' } as Tarefa];
         setFormData(prev => ({ ...prev, tarefas: updatedTasks }));
         setNewTask({ tipo: TipoTarefa.LIGACAO, data: new Date().toISOString().split('T')[0] });
+        setIsAddingTask(false);
     };
     
     const handleRemoveTask = (id: string) => {
@@ -1255,6 +1269,7 @@ const ObraModal: FC<{
         const updatedPropostas = [...(formData.propostas || []), { ...newProposta, id: `p_${Date.now()}`, data: new Date().toISOString() } as Proposta];
         setFormData(prev => ({...prev, propostas: updatedPropostas }));
         setNewProposta({ representada: Representada.REP_A, produtos: [] });
+        setIsAddingProposta(false);
     }
 
     const handleRemoveProposta = (id: string) => {
@@ -1280,33 +1295,24 @@ const ObraModal: FC<{
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
             <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-                <div className="p-6 border-b">
+                <div className="p-6 border-b flex justify-between items-center">
                     <h3 className="text-2xl font-bold">{formData.id ? 'Editar Obra' : 'Adicionar Nova Obra'}</h3>
+                     <button onClick={onClose}><XIcon className="h-6 w-6 text-gray-500 hover:text-gray-800" /></button>
                 </div>
 
-                <div className="border-b border-gray-200">
-                    <nav className="flex space-x-4 p-2" aria-label="Tabs">
-                        {['detalhes', 'contatos', 'tarefas', 'propostas'].map(tab => (
-                            <button key={tab} onClick={() => setActiveTab(tab)}
-                                className={`capitalize px-3 py-2 font-medium text-sm rounded-md ${activeTab === tab ? 'bg-blue-100 text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}
-                            >
-                                {tab}
-                            </button>
-                        ))}
-                    </nav>
-                </div>
-                
-                <div className="p-6 overflow-y-auto flex-grow">
-                    {activeTab === 'detalhes' && (
-                         <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">Nome da Obra</label>
-                                <input type="text" name="nome" value={formData.nome || ''} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">Construtora</label>
-                                <input type="text" name="construtora" value={formData.construtora || ''} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
-                            </div>
+                <div className="p-6 overflow-y-auto flex-grow space-y-6">
+                    {/* --- DETALHES --- */}
+                    <div className="space-y-4">
+                        <h4 className="text-lg font-semibold border-b pb-2">Detalhes da Obra</h4>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Nome da Obra</label>
+                            <input type="text" name="nome" value={formData.nome || ''} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Construtora</label>
+                            <input type="text" name="construtora" value={formData.construtora || ''} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">Etapa do Lead</label>
                                 <select name="etapa" value={formData.etapa || ''} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
@@ -1320,47 +1326,62 @@ const ObraModal: FC<{
                                 </select>
                             </div>
                         </div>
-                    )}
-                    {activeTab === 'contatos' && (
-                        <div>
-                            <h4 className="font-semibold mb-2">Adicionar Contato</h4>
-                            <div className="grid grid-cols-2 gap-2 mb-4 p-2 border rounded">
+                    </div>
+
+                    {/* --- CONTATOS --- */}
+                    <div>
+                        <h4 className="text-lg font-semibold border-b pb-2">Contatos</h4>
+                        <ul className="space-y-2 mt-2">
+                            {formData.contatos?.map(c => <li key={c.id} className="flex justify-between items-center p-2 bg-gray-100 rounded"><span>{c.nome} - {c.telefone}</span><button type="button" onClick={() => handleRemoveContact(c.id)}><TrashIcon className="h-5 w-5 text-red-500"/></button></li>)}
+                        </ul>
+                        {isAddingContact ? (
+                            <div className="grid grid-cols-2 gap-2 mt-2 p-2 border rounded">
                                 <input type="text" placeholder="Nome" value={newContact.nome || ''} onChange={e => setNewContact({...newContact, nome: e.target.value})} className="p-2 border rounded" />
                                 <input type="text" placeholder="Telefone" value={newContact.telefone || ''} onChange={e => setNewContact({...newContact, telefone: e.target.value})} className="p-2 border rounded" />
                                 <input type="email" placeholder="Email" value={newContact.email || ''} onChange={e => setNewContact({...newContact, email: e.target.value})} className="p-2 border rounded" />
                                 <input type="text" placeholder="Cargo" value={newContact.cargo || ''} onChange={e => setNewContact({...newContact, cargo: e.target.value})} className="p-2 border rounded" />
-                                <button type="button" onClick={handleAddContact} className="col-span-2 bg-blue-500 text-white p-2 rounded">Adicionar Contato</button>
+                                <div className="col-span-2 flex justify-end space-x-2">
+                                    <button type="button" onClick={() => setIsAddingContact(false)} className="bg-gray-200 px-3 py-1 rounded text-sm">Cancelar</button>
+                                    <button type="button" onClick={handleAddContact} className="bg-blue-500 text-white px-3 py-1 rounded text-sm">Salvar</button>
+                                </div>
                             </div>
-                            <h4 className="font-semibold mb-2 mt-4">Contatos Salvos</h4>
-                            <ul className="space-y-2">
-                                {formData.contatos?.map(c => <li key={c.id} className="flex justify-between items-center p-2 bg-gray-100 rounded"><span>{c.nome} - {c.telefone}</span><button type="button" onClick={() => handleRemoveContact(c.id)}><TrashIcon className="h-5 w-5 text-red-500"/></button></li>)}
-                                {(!formData.contatos || formData.contatos.length === 0) && <p className="text-sm text-gray-500">Nenhum contato adicionado.</p>}
-                            </ul>
-                        </div>
-                    )}
-                    {activeTab === 'tarefas' && (
-                         <div>
-                            <h4 className="font-semibold mb-2">Adicionar Tarefa</h4>
-                             <div className="grid grid-cols-2 gap-2 mb-4 p-2 border rounded">
+                        ) : (
+                             <button type="button" onClick={() => setIsAddingContact(true)} className="mt-2 text-blue-600 hover:underline text-sm flex items-center"><PlusCircleIcon className="h-5 w-5 mr-1" /> Adicionar Contato</button>
+                        )}
+                    </div>
+                    
+                    {/* --- TAREFAS --- */}
+                    <div>
+                        <h4 className="text-lg font-semibold border-b pb-2">Tarefas</h4>
+                        <ul className="space-y-2 mt-2">
+                            {formData.tarefas?.map(t => <li key={t.id} className="flex justify-between items-center p-2 bg-gray-100 rounded"><span>{t.titulo} ({new Date(t.data).toLocaleDateString('pt-BR')})</span><button type="button" onClick={() => handleRemoveTask(t.id)}><TrashIcon className="h-5 w-5 text-red-500"/></button></li>)}
+                        </ul>
+                        {isAddingTask ? (
+                             <div className="grid grid-cols-2 gap-2 mt-2 p-2 border rounded">
                                 <input type="text" placeholder="Título" value={newTask.titulo || ''} onChange={e => setNewTask({...newTask, titulo: e.target.value})} className="p-2 border rounded col-span-2" />
                                 <textarea placeholder="Descrição" value={newTask.descricao || ''} onChange={e => setNewTask({...newTask, descricao: e.target.value})} className="p-2 border rounded col-span-2" rows={2}></textarea>
                                 <input type="date" value={newTask.data || ''} onChange={e => setNewTask({...newTask, data: e.target.value})} className="p-2 border rounded" />
                                 <select value={newTask.tipo || ''} onChange={e => setNewTask({...newTask, tipo: e.target.value as TipoTarefa})} className="p-2 border rounded">
                                     {TIPO_TAREFA_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                 </select>
-                                <button type="button" onClick={handleAddTask} className="col-span-2 bg-blue-500 text-white p-2 rounded">Adicionar Tarefa</button>
+                                <div className="col-span-2 flex justify-end space-x-2">
+                                    <button type="button" onClick={() => setIsAddingTask(false)} className="bg-gray-200 px-3 py-1 rounded text-sm">Cancelar</button>
+                                    <button type="button" onClick={handleAddTask} className="bg-blue-500 text-white px-3 py-1 rounded text-sm">Salvar</button>
+                                </div>
                             </div>
-                            <h4 className="font-semibold mb-2 mt-4">Tarefas Salvas</h4>
-                            <ul className="space-y-2">
-                                {formData.tarefas?.map(t => <li key={t.id} className="flex justify-between items-center p-2 bg-gray-100 rounded"><span>{t.titulo} ({new Date(t.data).toLocaleDateString('pt-BR')})</span><button type="button" onClick={() => handleRemoveTask(t.id)}><TrashIcon className="h-5 w-5 text-red-500"/></button></li>)}
-                                 {(!formData.tarefas || formData.tarefas.length === 0) && <p className="text-sm text-gray-500">Nenhuma tarefa adicionada.</p>}
-                            </ul>
-                        </div>
-                    )}
-                    {activeTab === 'propostas' && (
-                         <div>
-                            <h4 className="font-semibold mb-2">Adicionar Proposta</h4>
-                             <div className="grid grid-cols-2 gap-2 mb-4 p-2 border rounded">
+                        ) : (
+                             <button type="button" onClick={() => setIsAddingTask(true)} className="mt-2 text-blue-600 hover:underline text-sm flex items-center"><PlusCircleIcon className="h-5 w-5 mr-1" /> Adicionar Tarefa</button>
+                        )}
+                    </div>
+
+                    {/* --- PROPOSTAS --- */}
+                    <div>
+                        <h4 className="text-lg font-semibold border-b pb-2">Propostas</h4>
+                        <ul className="space-y-2 mt-2">
+                            {formData.propostas?.map(p => <li key={p.id} className="flex justify-between items-center p-2 bg-gray-100 rounded"><span>{p.representada} - {p.valor.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</span><button type="button" onClick={() => handleRemoveProposta(p.id)}><TrashIcon className="h-5 w-5 text-red-500"/></button></li>)}
+                        </ul>
+                        {isAddingProposta ? (
+                             <div className="grid grid-cols-2 gap-2 mt-2 p-2 border rounded">
                                 <select value={newProposta.representada || ''} onChange={e => setNewProposta({...newProposta, representada: e.target.value as Representada, produtos: []})} className="p-2 border rounded col-span-2">
                                      {Object.values(Representada).map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                 </select>
@@ -1368,15 +1389,15 @@ const ObraModal: FC<{
                                      {availableProducts.map(p => <option key={p} value={p}>{p}</option>)}
                                 </select>
                                 <input type="number" placeholder="Valor (R$)" value={newProposta.valor || ''} onChange={e => setNewProposta({...newProposta, valor: +e.target.value})} className="p-2 border rounded col-span-2" />
-                                <button type="button" onClick={handleAddProposta} className="col-span-2 bg-blue-500 text-white p-2 rounded">Adicionar Proposta</button>
+                                <div className="col-span-2 flex justify-end space-x-2">
+                                    <button type="button" onClick={() => setIsAddingProposta(false)} className="bg-gray-200 px-3 py-1 rounded text-sm">Cancelar</button>
+                                    <button type="button" onClick={handleAddProposta} className="bg-blue-500 text-white px-3 py-1 rounded text-sm">Salvar</button>
+                                </div>
                             </div>
-                            <h4 className="font-semibold mb-2 mt-4">Propostas Salvas</h4>
-                            <ul className="space-y-2">
-                                {formData.propostas?.map(p => <li key={p.id} className="flex justify-between items-center p-2 bg-gray-100 rounded"><span>{p.representada} - {p.valor.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</span><button type="button" onClick={() => handleRemoveProposta(p.id)}><TrashIcon className="h-5 w-5 text-red-500"/></button></li>)}
-                                {(!formData.propostas || formData.propostas.length === 0) && <p className="text-sm text-gray-500">Nenhuma proposta adicionada.</p>}
-                            </ul>
-                        </div>
-                    )}
+                        ) : (
+                            <button type="button" onClick={() => setIsAddingProposta(true)} className="mt-2 text-blue-600 hover:underline text-sm flex items-center"><PlusCircleIcon className="h-5 w-5 mr-1" /> Adicionar Proposta</button>
+                        )}
+                    </div>
                 </div>
 
                 <div className="p-4 bg-gray-50 border-t flex justify-end space-x-3">
