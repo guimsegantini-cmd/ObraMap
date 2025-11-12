@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect, useMemo, FC, useCallback, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polyline, Polygon, CircleMarker } from 'react-leaflet';
 // FIX: Standardized leaflet import to use the conventional 'L' namespace to resolve react-leaflet type conflicts.
-import L from 'leaflet';
+import * as L from 'leaflet';
 import * as Recharts from 'recharts';
 import { auth, db, storage, isFirebaseConfigured } from './firebase';
 import { 
@@ -34,7 +33,7 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage
 const { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } = Recharts;
 
 import { Obra, EtapaLead, User, Tarefa, TipoTarefa, Contato, FaseObra, Proposta, Representada, Metas, Region } from './types';
-import { ETAPA_LEAD_OPTIONS, FASE_OBRA_OPTIONS, REPRESENTADA_PRODUTOS_MAP, MOCK_OBRAS } from './constants';
+import { ETAPA_LEAD_OPTIONS, FASE_OBRA_OPTIONS, TIPO_TAREFA_OPTIONS, REPRESENTADA_PRODUTOS_MAP, MOCK_OBRAS } from './constants';
 import {
   ListIcon, MapIcon, CheckSquareIcon, BarChartIcon, UserIcon, EyeIcon, EyeOffIcon, XIcon, PlusIcon, PhoneIcon, MailIcon, BriefcaseIcon, EditIcon, TrashIcon, PlusCircleIcon, RouteIcon, NavigationIcon, MyLocationIcon, DownloadIcon, UploadIcon
 } from './components/Icons';
@@ -576,8 +575,9 @@ const MapTab: React.FC<{
 const ListaTab: FC<{
     obras: Obra[],
     onEditObra: (obra: Obra) => void,
-    onFlyTo: (coords: [number, number]) => void
-}> = ({ obras, onEditObra, onFlyTo }) => {
+    onFlyTo: (coords: [number, number]) => void,
+    onNavigate: (obra: Obra) => void,
+}> = ({ obras, onEditObra, onFlyTo, onNavigate }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterEtapa, setFilterEtapa] = useState<EtapaLead | 'todos'>('todos');
     const [filterFase, setFilterFase] = useState<FaseObra | 'todos'>('todos');
@@ -650,7 +650,7 @@ const ListaTab: FC<{
                         {filteredObras.map(obra => {
                             const contato = obra.contatos[0];
                             const proposta = obra.propostas[0];
-                            const whatsappLink = contato ? `https://wa.me/${contato.telefone.replace(/\D/g, '')}`: '#';
+                            const whatsappLink = contato ? `https://wa.me/55${contato.telefone.replace(/\D/g, '')}`: '#';
 
                             return (
                                 <li key={obra.id} className="bg-white border border-gray-200 p-4 rounded-lg shadow-sm">
@@ -679,11 +679,14 @@ const ListaTab: FC<{
                                         )}
                                     </div>
                                     <div className="mt-4 flex justify-end space-x-2">
-                                        <button onClick={() => onEditObra(obra)} className="p-2 bg-blue-100 text-blue-600 rounded-full hover:bg-blue-200 transition-colors">
+                                        <button onClick={() => onEditObra(obra)} title="Editar" className="p-2 bg-blue-100 text-blue-600 rounded-full hover:bg-blue-200 transition-colors">
                                             <EditIcon className="h-5 w-5" />
                                         </button>
-                                        <button onClick={() => onFlyTo([obra.lat, obra.lng])} className="p-2 bg-green-100 text-green-600 rounded-full hover:bg-green-200 transition-colors">
+                                        <button onClick={() => onFlyTo([obra.lat, obra.lng])} title="Ver no Mapa" className="p-2 bg-green-100 text-green-600 rounded-full hover:bg-green-200 transition-colors">
                                             <MapIcon className="h-5 w-5" />
+                                        </button>
+                                        <button onClick={() => onNavigate(obra)} title="Navegar" className="p-2 bg-purple-100 text-purple-600 rounded-full hover:bg-purple-200 transition-colors">
+                                            <NavigationIcon className="h-5 w-5" />
                                         </button>
                                     </div>
                                 </li>
@@ -1192,22 +1195,73 @@ const ChangePasswordModal: FC<{ isOpen: boolean, onClose: () => void }> = ({ isO
 };
 
 const ObraModal: FC<{
-    isOpen: boolean,
-    onClose: () => void,
-    obraData: Partial<Obra>,
-    onSave: (obra: Partial<Obra>) => void
+    isOpen: boolean;
+    onClose: () => void;
+    obraData: Partial<Obra>;
+    onSave: (obra: Partial<Obra>) => void;
 }> = ({ isOpen, onClose, obraData, onSave }) => {
-    const [formData, setFormData] = useState<Partial<Obra>>(obraData);
+    const [formData, setFormData] = useState<Partial<Obra>>({});
+    const [activeTab, setActiveTab] = useState('detalhes');
+
+    const [newContact, setNewContact] = useState<Partial<Contato>>({});
+    const [newTask, setNewTask] = useState<Partial<Tarefa>>({ tipo: TipoTarefa.LIGACAO, data: new Date().toISOString().split('T')[0] });
+    const [newProposta, setNewProposta] = useState<Partial<Proposta>>({ representada: Representada.REP_A, produtos: [] });
 
     useEffect(() => {
         setFormData(obraData);
+        setActiveTab('detalhes'); // Reset tab on new data
     }, [obraData]);
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
+
+    const handleAddContact = () => {
+        if (!newContact.nome || !newContact.telefone) {
+            alert("Nome e telefone do contato são obrigatórios.");
+            return;
+        }
+        const updatedContacts = [...(formData.contatos || []), { ...newContact, id: `c_${Date.now()}` } as Contato];
+        setFormData(prev => ({ ...prev, contatos: updatedContacts }));
+        setNewContact({});
+    };
     
+    const handleRemoveContact = (id: string) => {
+        const updatedContacts = formData.contatos?.filter(c => c.id !== id);
+        setFormData(prev => ({...prev, contatos: updatedContacts }));
+    }
+
+    const handleAddTask = () => {
+        if (!newTask.titulo) {
+             alert("O título da tarefa é obrigatório.");
+            return;
+        }
+        const updatedTasks = [...(formData.tarefas || []), { ...newTask, id: `t_${Date.now()}`, status: 'Pendente' } as Tarefa];
+        setFormData(prev => ({ ...prev, tarefas: updatedTasks }));
+        setNewTask({ tipo: TipoTarefa.LIGACAO, data: new Date().toISOString().split('T')[0] });
+    };
+    
+    const handleRemoveTask = (id: string) => {
+        const updatedTasks = formData.tarefas?.filter(t => t.id !== id);
+        setFormData(prev => ({...prev, tarefas: updatedTasks }));
+    }
+
+    const handleAddProposta = () => {
+        if (!newProposta.representada || !newProposta.valor) {
+            alert("Representada e Valor são obrigatórios para a proposta.");
+            return;
+        }
+        const updatedPropostas = [...(formData.propostas || []), { ...newProposta, id: `p_${Date.now()}`, data: new Date().toISOString() } as Proposta];
+        setFormData(prev => ({...prev, propostas: updatedPropostas }));
+        setNewProposta({ representada: Representada.REP_A, produtos: [] });
+    }
+
+    const handleRemoveProposta = (id: string) => {
+        const updatedPropostas = formData.propostas?.filter(p => p.id !== id);
+        setFormData(prev => ({...prev, propostas: updatedPropostas }));
+    }
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!formData.nome || !formData.construtora) {
@@ -1216,41 +1270,119 @@ const ObraModal: FC<{
         }
         onSave(formData);
     };
+    
+    const availableProducts = useMemo(() => {
+        return newProposta.representada ? REPRESENTADA_PRODUTOS_MAP[newProposta.representada] : [];
+    }, [newProposta.representada]);
 
     if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
-            <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg max-h-full overflow-y-auto">
-                <form onSubmit={handleSubmit}>
-                    <h3 className="text-xl font-bold mb-4">{formData.id ? 'Editar Obra' : 'Adicionar Nova Obra'}</h3>
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Nome da Obra</label>
-                            <input type="text" name="nome" value={formData.nome || ''} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+                <div className="p-6 border-b">
+                    <h3 className="text-2xl font-bold">{formData.id ? 'Editar Obra' : 'Adicionar Nova Obra'}</h3>
+                </div>
+
+                <div className="border-b border-gray-200">
+                    <nav className="flex space-x-4 p-2" aria-label="Tabs">
+                        {['detalhes', 'contatos', 'tarefas', 'propostas'].map(tab => (
+                            <button key={tab} onClick={() => setActiveTab(tab)}
+                                className={`capitalize px-3 py-2 font-medium text-sm rounded-md ${activeTab === tab ? 'bg-blue-100 text-blue-700' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                {tab}
+                            </button>
+                        ))}
+                    </nav>
+                </div>
+                
+                <div className="p-6 overflow-y-auto flex-grow">
+                    {activeTab === 'detalhes' && (
+                         <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Nome da Obra</label>
+                                <input type="text" name="nome" value={formData.nome || ''} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Construtora</label>
+                                <input type="text" name="construtora" value={formData.construtora || ''} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Etapa do Lead</label>
+                                <select name="etapa" value={formData.etapa || ''} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                                    {ETAPA_LEAD_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Fase da Obra</label>
+                                <select name="fase" value={formData.fase || ''} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                                    {FASE_OBRA_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                </select>
+                            </div>
                         </div>
+                    )}
+                    {activeTab === 'contatos' && (
                         <div>
-                            <label className="block text-sm font-medium text-gray-700">Construtora</label>
-                            <input type="text" name="construtora" value={formData.construtora || ''} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                            <h4 className="font-semibold mb-2">Adicionar Contato</h4>
+                            <div className="grid grid-cols-2 gap-2 mb-4 p-2 border rounded">
+                                <input type="text" placeholder="Nome" value={newContact.nome || ''} onChange={e => setNewContact({...newContact, nome: e.target.value})} className="p-2 border rounded" />
+                                <input type="text" placeholder="Telefone" value={newContact.telefone || ''} onChange={e => setNewContact({...newContact, telefone: e.target.value})} className="p-2 border rounded" />
+                                <input type="email" placeholder="Email" value={newContact.email || ''} onChange={e => setNewContact({...newContact, email: e.target.value})} className="p-2 border rounded" />
+                                <input type="text" placeholder="Cargo" value={newContact.cargo || ''} onChange={e => setNewContact({...newContact, cargo: e.target.value})} className="p-2 border rounded" />
+                                <button type="button" onClick={handleAddContact} className="col-span-2 bg-blue-500 text-white p-2 rounded">Adicionar Contato</button>
+                            </div>
+                            <h4 className="font-semibold mb-2 mt-4">Contatos Salvos</h4>
+                            <ul className="space-y-2">
+                                {formData.contatos?.map(c => <li key={c.id} className="flex justify-between items-center p-2 bg-gray-100 rounded"><span>{c.nome} - {c.telefone}</span><button type="button" onClick={() => handleRemoveContact(c.id)}><TrashIcon className="h-5 w-5 text-red-500"/></button></li>)}
+                                {(!formData.contatos || formData.contatos.length === 0) && <p className="text-sm text-gray-500">Nenhum contato adicionado.</p>}
+                            </ul>
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Etapa do Lead</label>
-                            <select name="etapa" value={formData.etapa || ''} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                                {ETAPA_LEAD_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                            </select>
-                        </div>
+                    )}
+                    {activeTab === 'tarefas' && (
                          <div>
-                            <label className="block text-sm font-medium text-gray-700">Fase da Obra</label>
-                            <select name="fase" value={formData.fase || ''} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                                {FASE_OBRA_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                            </select>
+                            <h4 className="font-semibold mb-2">Adicionar Tarefa</h4>
+                             <div className="grid grid-cols-2 gap-2 mb-4 p-2 border rounded">
+                                <input type="text" placeholder="Título" value={newTask.titulo || ''} onChange={e => setNewTask({...newTask, titulo: e.target.value})} className="p-2 border rounded col-span-2" />
+                                <textarea placeholder="Descrição" value={newTask.descricao || ''} onChange={e => setNewTask({...newTask, descricao: e.target.value})} className="p-2 border rounded col-span-2" rows={2}></textarea>
+                                <input type="date" value={newTask.data || ''} onChange={e => setNewTask({...newTask, data: e.target.value})} className="p-2 border rounded" />
+                                <select value={newTask.tipo || ''} onChange={e => setNewTask({...newTask, tipo: e.target.value as TipoTarefa})} className="p-2 border rounded">
+                                    {TIPO_TAREFA_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                </select>
+                                <button type="button" onClick={handleAddTask} className="col-span-2 bg-blue-500 text-white p-2 rounded">Adicionar Tarefa</button>
+                            </div>
+                            <h4 className="font-semibold mb-2 mt-4">Tarefas Salvas</h4>
+                            <ul className="space-y-2">
+                                {formData.tarefas?.map(t => <li key={t.id} className="flex justify-between items-center p-2 bg-gray-100 rounded"><span>{t.titulo} ({new Date(t.data).toLocaleDateString('pt-BR')})</span><button type="button" onClick={() => handleRemoveTask(t.id)}><TrashIcon className="h-5 w-5 text-red-500"/></button></li>)}
+                                 {(!formData.tarefas || formData.tarefas.length === 0) && <p className="text-sm text-gray-500">Nenhuma tarefa adicionada.</p>}
+                            </ul>
                         </div>
-                    </div>
-                    <div className="mt-6 flex justify-end space-x-3">
-                        <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-md">Cancelar</button>
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md">Salvar</button>
-                    </div>
-                </form>
+                    )}
+                    {activeTab === 'propostas' && (
+                         <div>
+                            <h4 className="font-semibold mb-2">Adicionar Proposta</h4>
+                             <div className="grid grid-cols-2 gap-2 mb-4 p-2 border rounded">
+                                <select value={newProposta.representada || ''} onChange={e => setNewProposta({...newProposta, representada: e.target.value as Representada, produtos: []})} className="p-2 border rounded col-span-2">
+                                     {Object.values(Representada).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                </select>
+                                <select multiple value={newProposta.produtos || []} onChange={e => setNewProposta({...newProposta, produtos: Array.from(e.target.selectedOptions, option => option.value)})} className="p-2 border rounded col-span-2 h-24">
+                                     {availableProducts.map(p => <option key={p} value={p}>{p}</option>)}
+                                </select>
+                                <input type="number" placeholder="Valor (R$)" value={newProposta.valor || ''} onChange={e => setNewProposta({...newProposta, valor: +e.target.value})} className="p-2 border rounded col-span-2" />
+                                <button type="button" onClick={handleAddProposta} className="col-span-2 bg-blue-500 text-white p-2 rounded">Adicionar Proposta</button>
+                            </div>
+                            <h4 className="font-semibold mb-2 mt-4">Propostas Salvas</h4>
+                            <ul className="space-y-2">
+                                {formData.propostas?.map(p => <li key={p.id} className="flex justify-between items-center p-2 bg-gray-100 rounded"><span>{p.representada} - {p.valor.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</span><button type="button" onClick={() => handleRemoveProposta(p.id)}><TrashIcon className="h-5 w-5 text-red-500"/></button></li>)}
+                                {(!formData.propostas || formData.propostas.length === 0) && <p className="text-sm text-gray-500">Nenhuma proposta adicionada.</p>}
+                            </ul>
+                        </div>
+                    )}
+                </div>
+
+                <div className="p-4 bg-gray-50 border-t flex justify-end space-x-3">
+                    <button type="button" onClick={onClose} className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md font-semibold hover:bg-gray-300">Cancelar</button>
+                    <button type="button" onClick={handleSubmit} className="px-6 py-2 bg-blue-600 text-white rounded-md font-semibold hover:bg-blue-700">Salvar</button>
+                </div>
             </div>
         </div>
     );
@@ -1628,7 +1760,7 @@ export default function App() {
                             onNavigate={navigate}
                          />;
             case 'list':
-                return <ListaTab obras={obras} onEditObra={editObra} onFlyTo={handleFlyTo} />;
+                return <ListaTab obras={obras} onEditObra={editObra} onFlyTo={handleFlyTo} onNavigate={navigate} />;
             case 'tasks':
                 return <TarefasTab obras={obras} onRoteirizar={handleRoteirizar} />;
             case 'dashboard':
