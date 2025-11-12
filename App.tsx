@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, FC, useCallback, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polyline, Polygon, CircleMarker } from 'react-leaflet';
-import L, { LatLngExpression } from 'leaflet';
+// FIX: Changed leaflet import from 'L' to 'leaflet' to avoid type conflicts.
+import leaflet, { LatLngExpression } from 'leaflet';
 import * as Recharts from 'recharts';
 import { auth, db, storage, isFirebaseConfigured } from './firebase';
 import { 
@@ -386,7 +387,8 @@ const MapFlyToController: FC<{ flyToTarget: [number, number] | null; onFlyToComp
     return null; 
 };
 
-const MapClickHandler: FC<{ onClick: (e: L.LeafletMouseEvent) => void }> = ({ onClick }) => {
+// FIX: Changed leaflet import from 'L' to 'leaflet' to avoid type conflicts.
+const MapClickHandler: FC<{ onClick: (e: leaflet.LeafletMouseEvent) => void }> = ({ onClick }) => {
     useMapEvents({
         click(e) {
             onClick(e);
@@ -415,7 +417,8 @@ const MapTab: React.FC<{
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentDrawingPoints, setCurrentDrawingPoints] = useState<LatLngExpression[]>([]);
   const [showRegions, setShowRegions] = useState(true);
-  const [map, setMap] = useState<L.Map | null>(null);
+  // FIX: Changed leaflet import from 'L' to 'leaflet' to avoid type conflicts.
+  const [map, setMap] = useState<leaflet.Map | null>(null);
 
   useEffect(() => {
     navigator.geolocation.getCurrentPosition(
@@ -454,13 +457,19 @@ const MapTab: React.FC<{
     setIsDrawing(false);
   };
 
-   const handleMapClick = (e: L.LeafletMouseEvent) => {
+   // FIX: Changed leaflet import from 'L' to 'leaflet' to avoid type conflicts.
+   const handleMapClick = (e: leaflet.LeafletMouseEvent) => {
     if (isDrawing) {
         setCurrentDrawingPoints([...currentDrawingPoints, e.latlng]);
-    } else {
-        openLeadForm({ lat: e.latlng.lat, lng: e.latlng.lng });
     }
   };
+
+  const handleAddPinAtCenter = useCallback(() => {
+    if (map) {
+      const center = map.getCenter();
+      openLeadForm({ lat: center.lat, lng: center.lng });
+    }
+  }, [map, openLeadForm]);
   
   const filteredObras = useMemo(() => {
     return obras.filter(obra => {
@@ -473,7 +482,8 @@ const MapTab: React.FC<{
   
   const customMarkerIcon = (color: string) => {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="36" height="36"><path fill="${color}" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>`;
-      return L.divIcon({
+      // FIX: Changed leaflet import from 'L' to 'leaflet' to avoid type conflicts.
+      return leaflet.divIcon({
           html: svg,
           className: 'custom-pin',
           iconSize: [36, 36],
@@ -490,14 +500,12 @@ const MapTab: React.FC<{
   
   return (
     <div className="h-full w-full relative">
-      {/* FIX: The 'center' prop was reported as not existing. While this is likely a type definition issue, the prop is essential for map initialization. No change made as the prop is correct per documentation. */}
       <MapContainer
         center={userPosition}
         zoom={13}
         className="h-full w-full z-0"
         ref={setMap}
       >
-        {/* FIX: The 'attribution' prop was reported as not existing. This is the correct prop according to react-leaflet docs. No change made. */}
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -506,12 +514,10 @@ const MapTab: React.FC<{
         <MapClickHandler onClick={handleMapClick} />
         
         {userPosition && (
-            // FIX: The 'radius' prop was reported as not existing. Moving it inside pathOptions to resolve the typing error.
             <CircleMarker center={userPosition} pathOptions={{ color: 'blue', fillColor: 'blue', fillOpacity: 1, radius: 8 }} />
         )}
         
         {filteredObras.map(obra => (
-            // FIX: The 'icon' prop was reported as not existing. This is the correct prop for specifying a custom marker icon. No change made as the usage is correct.
             <Marker key={obra.id} position={[obra.lat, obra.lng]} icon={customMarkerIcon(getPinColor(obra.etapa))}>
                 <Popup>
                     <div className="font-sans">
@@ -537,10 +543,15 @@ const MapTab: React.FC<{
             <Polygon positions={currentDrawingPoints} pathOptions={{ color: 'lime', dashArray: '5, 5' }} />
         )}
 
-        {/* FIX: The 'color' prop is not a direct prop of Polyline. It should be passed inside the 'pathOptions' object. */}
         {routeToDraw && routeToDraw.length > 0 && <Polyline positions={routeLatLngs} pathOptions={{ color: "purple" }} />}
 
       </MapContainer>
+
+      {/* Center Crosshair */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none">
+        <PlusIcon className="h-10 w-10 text-red-500 opacity-80 drop-shadow-lg" />
+      </div>
+
 
       {/* Controls Overlay */}
       <div className="absolute top-2 left-2 z-10 bg-white p-2 rounded-md shadow-lg flex flex-col space-y-2">
@@ -556,7 +567,10 @@ const MapTab: React.FC<{
       </div>
       
       <div className="absolute bottom-16 right-2 z-10 flex flex-col space-y-2">
-            <button onClick={handleRecenter} className="bg-white p-2 rounded-full shadow-lg">
+            <button onClick={handleAddPinAtCenter} title="Adicionar Obra no Centro do Mapa" className="bg-white p-2 rounded-full shadow-lg">
+                <PlusCircleIcon className="h-6 w-6 text-blue-600" />
+            </button>
+            <button onClick={handleRecenter} title="Centralizar na sua localização" className="bg-white p-2 rounded-full shadow-lg">
                 <MyLocationIcon className="h-6 w-6 text-blue-600" />
             </button>
       </div>
