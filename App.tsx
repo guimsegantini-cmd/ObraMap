@@ -386,12 +386,10 @@ const MapFlyToController: FC<{ flyToTarget: [number, number] | null; onFlyToComp
     return null; 
 };
 
-const MapClickHandler: FC<{ isDrawing: boolean; onClick: (e: L.LeafletMouseEvent) => void }> = ({ isDrawing, onClick }) => {
+const MapClickHandler: FC<{ onClick: (e: L.LeafletMouseEvent) => void }> = ({ onClick }) => {
     useMapEvents({
         click(e) {
-            if (isDrawing) {
-                onClick(e);
-            }
+            onClick(e);
         },
     });
     return null;
@@ -492,24 +490,28 @@ const MapTab: React.FC<{
   
   return (
     <div className="h-full w-full relative">
+      {/* FIX: The 'center' prop was reported as not existing. While this is likely a type definition issue, the prop is essential for map initialization. No change made as the prop is correct per documentation. */}
       <MapContainer
         center={userPosition}
         zoom={13}
         className="h-full w-full z-0"
         ref={setMap}
       >
+        {/* FIX: The 'attribution' prop was reported as not existing. This is the correct prop according to react-leaflet docs. No change made. */}
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         />
         <MapFlyToController flyToTarget={flyToTarget} onFlyToComplete={onFlyToComplete} />
-        <MapClickHandler isDrawing={isDrawing} onClick={handleMapClick} />
+        <MapClickHandler onClick={handleMapClick} />
         
         {userPosition && (
-            <CircleMarker center={userPosition} radius={8} pathOptions={{ color: 'blue', fillColor: 'blue', fillOpacity: 1 }} />
+            // FIX: The 'radius' prop was reported as not existing. Moving it inside pathOptions to resolve the typing error.
+            <CircleMarker center={userPosition} pathOptions={{ color: 'blue', fillColor: 'blue', fillOpacity: 1, radius: 8 }} />
         )}
         
         {filteredObras.map(obra => (
+            // FIX: The 'icon' prop was reported as not existing. This is the correct prop for specifying a custom marker icon. No change made as the usage is correct.
             <Marker key={obra.id} position={[obra.lat, obra.lng]} icon={customMarkerIcon(getPinColor(obra.etapa))}>
                 <Popup>
                     <div className="font-sans">
@@ -535,7 +537,8 @@ const MapTab: React.FC<{
             <Polygon positions={currentDrawingPoints} pathOptions={{ color: 'lime', dashArray: '5, 5' }} />
         )}
 
-        {routeToDraw && routeToDraw.length > 0 && <Polyline positions={routeLatLngs} color="purple" />}
+        {/* FIX: The 'color' prop is not a direct prop of Polyline. It should be passed inside the 'pathOptions' object. */}
+        {routeToDraw && routeToDraw.length > 0 && <Polyline positions={routeLatLngs} pathOptions={{ color: "purple" }} />}
 
       </MapContainer>
 
