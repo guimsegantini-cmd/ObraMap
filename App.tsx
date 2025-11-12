@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useMemo, FC, useCallback, useRef } from 'react';
 // FIX: Reordered leaflet import to be before react-leaflet to resolve type conflicts.
 import * as L from 'leaflet';
@@ -104,7 +105,7 @@ const AuthLayout: FC<{ title: string, subtitle: string, children: React.ReactNod
           <BriefcaseIcon className="h-10 w-10 text-white" />
         </div>
         <h1 className="text-3xl font-bold text-gray-800 mt-4">{title}</h1>
-        <p className="text-gray-500 ">{subtitle}</p>
+        <p className="text-gray-500">{subtitle}</p>
       </div>
       {children}
     </div>
@@ -496,7 +497,6 @@ const MapTab: React.FC<{
         center={userPosition}
         zoom={13}
         className="h-full w-full z-0"
-        // FIX: Changed ref to whenCreated to be compatible with react-leaflet v3 and fix type errors.
         whenCreated={setMap}
       >
         <TileLayer
@@ -507,6 +507,7 @@ const MapTab: React.FC<{
         <MapClickHandler onClick={handleMapClick} />
         
         {userPosition && (
+// FIX: The `radius` prop should be inside `pathOptions` for compatibility with some versions of react-leaflet and @types/leaflet.
             <CircleMarker center={userPosition} pathOptions={{ color: 'blue', fillColor: 'blue', fillOpacity: 1, radius: 8 }} />
         )}
         
