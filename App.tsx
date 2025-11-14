@@ -1,10 +1,9 @@
 
 
-import React, { useState, useEffect, useMemo, FC, useCallback, useRef } from 'react';
-// FIX: Reordered leaflet import to be before react-leaflet to resolve type conflicts.
+import React, { useState, useEffect, useMemo, FC, useCallback } from 'react';
 import * as L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polyline, Polygon, CircleMarker } from 'react-leaflet';
-import * as Recharts from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { auth, db, storage, isFirebaseConfigured } from './firebase';
 import { 
   createUserWithEmailAndPassword, 
@@ -28,16 +27,14 @@ import {
     deleteDoc, 
     writeBatch, 
     getDoc,
-    query,
-    where
+    query
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
-const { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } = Recharts;
 
 import { Obra, EtapaLead, User, Tarefa, TipoTarefa, Contato, FaseObra, Proposta, Representada, Metas, Region } from './types';
 import { ETAPA_LEAD_OPTIONS, FASE_OBRA_OPTIONS, TIPO_TAREFA_OPTIONS, REPRESENTADA_PRODUTOS_MAP, MOCK_OBRAS } from './constants';
 import {
-  ListIcon, MapIcon, CheckSquareIcon, BarChartIcon, UserIcon, EyeIcon, EyeOffIcon, XIcon, PlusIcon, PhoneIcon, MailIcon, BriefcaseIcon, EditIcon, TrashIcon, PlusCircleIcon, RouteIcon, NavigationIcon, MyLocationIcon, DownloadIcon, UploadIcon
+  ListIcon, MapIcon, CheckSquareIcon, BarChartIcon, UserIcon, EyeIcon, EyeOffIcon, XIcon, BriefcaseIcon, TrashIcon, PlusCircleIcon, RouteIcon, NavigationIcon, MyLocationIcon, UploadIcon, EditIcon, PhoneIcon
 } from './components/Icons';
 
 // --- HELPERS & MOCKS ---
@@ -369,7 +366,7 @@ const AuthManager: FC<{
   return <LoginPage setPage={setPage} onMockLogin={onMockLogin} />;
 };
 
-
+// --- MAP COMPONENTS ---
 const REGION_COLORS = ['blue', 'green', 'purple', 'orange', 'red', 'yellow'];
 
 const MapFlyToController: FC<{ flyToTarget: [number, number] | null; onFlyToComplete: () => void; }> = ({ flyToTarget, onFlyToComplete }) => {
@@ -398,8 +395,6 @@ const MapClickHandler: FC<{ onClick: (e: L.LeafletMouseEvent) => void }> = ({ on
     return null;
 };
 
-
-// --- MAP TAB COMPONENT ---
 const MapTab: React.FC<{
     obras: Obra[];
     openLeadForm: (coords?: { lat: number, lng: number }, obra?: Obra) => void;
@@ -423,7 +418,7 @@ const MapTab: React.FC<{
   useEffect(() => {
     navigator.geolocation.getCurrentPosition(
       (pos) => setUserPosition([pos.coords.latitude, pos.coords.longitude]),
-      () => setUserPosition([-19.9245, -43.9352]) // Fallback
+      () => setUserPosition([-19.9245, -43.9352]) // Fallback to a default location
     );
   }, []);
 
@@ -507,7 +502,6 @@ const MapTab: React.FC<{
         <MapClickHandler onClick={handleMapClick} />
         
         {userPosition && (
-// FIX: The `radius` prop should be inside `pathOptions` for compatibility with some versions of react-leaflet and @types/leaflet.
             <CircleMarker center={userPosition} pathOptions={{ color: 'blue', fillColor: 'blue', fillOpacity: 1, radius: 8 }} />
         )}
         
@@ -575,6 +569,7 @@ const MapTab: React.FC<{
   );
 };
 
+// --- OTHER TAB COMPONENTS (UNCHANGED, ABBREVIATED FOR BREVITY) ---
 const ListaTab: FC<{
     obras: Obra[],
     onEditObra: (obra: Obra) => void,
@@ -706,7 +701,6 @@ const ListaTab: FC<{
         </div>
     );
 };
-
 
 const TarefasTab: FC<{ obras: Obra[], onRoteirizar: (obras: Obra[]) => void }> = ({ obras, onRoteirizar }) => {
     const [filter, setFilter] = useState<'dia' | 'futuras' | 'todas' | 'custom'>('dia');
@@ -1056,6 +1050,7 @@ const PerfilTab: FC<{
     );
 };
 
+// --- MODAL COMPONENTS ---
 const MetasModal: FC<{
     isOpen: boolean,
     onClose: () => void,
@@ -1153,7 +1148,7 @@ const ChangePasswordModal: FC<{ isOpen: boolean, onClose: () => void }> = ({ isO
             setError("As novas senhas não coincidem.");
             return;
         }
-        if (!auth.currentUser) return;
+        if (!auth?.currentUser) return;
         
         setIsLoading(true);
         try {
@@ -1201,8 +1196,9 @@ const ObraModal: FC<{
     isOpen: boolean;
     onClose: () => void;
     obraData: Partial<Obra>;
-    onSave: (obra: Partial<Obra>) => void;
-}> = ({ isOpen, onClose, obraData, onSave }) => {
+    onSave: (obra: Partial<Obra>, filesToUpload: File[], deletedUrls: string[]) => void;
+    isSaving: boolean;
+}> = ({ isOpen, onClose, obraData, onSave, isSaving }) => {
     const [formData, setFormData] = useState<Partial<Obra>>({});
     
     const [isAddingContact, setIsAddingContact] = useState(false);
@@ -1214,15 +1210,26 @@ const ObraModal: FC<{
     const [isAddingProposta, setIsAddingProposta] = useState(false);
     const [newProposta, setNewProposta] = useState<Partial<Proposta>>({ representada: Representada.REP_A, produtos: [] });
 
+    // State for photo management
+    const [filesToUpload, setFilesToUpload] = useState<File[]>([]);
+    const [deletedPhotos, setDeletedPhotos] = useState<string[]>([]);
+    const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
+
     useEffect(() => {
         setFormData(obraData);
-        // Reset add forms
+        // Reset all forms and states on data change
         setIsAddingContact(false);
-        setIsAddingTask(false);
-        setIsAddingProposta(false);
         setNewContact({});
+        setIsAddingTask(false);
         setNewTask({ tipo: TipoTarefa.LIGACAO, data: new Date().toISOString().split('T')[0] });
+        setIsAddingProposta(false);
         setNewProposta({ representada: Representada.REP_A, produtos: [] });
+        setFilesToUpload([]);
+        setDeletedPhotos([]);
+        // Clean up old previews
+        photoPreviews.forEach(URL.revokeObjectURL);
+        setPhotoPreviews([]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [obraData]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -1278,13 +1285,41 @@ const ObraModal: FC<{
         setFormData(prev => ({...prev, propostas: updatedPropostas }));
     }
 
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files) {
+            const newFiles = Array.from(e.target.files);
+            setFilesToUpload(prev => [...prev, ...newFiles]);
+
+            // FIX: Explicitly type `file` as `File` to allow `URL.createObjectURL` and fix `unknown` type inference error.
+            const newPreviews = newFiles.map((file: File) => URL.createObjectURL(file));
+            setPhotoPreviews(prev => [...prev, ...newPreviews]);
+        }
+        e.target.value = ''; // Reset input to allow selecting same file again
+    };
+
+    const handleRemoveNewPhoto = (index: number) => {
+        setFilesToUpload(prev => prev.filter((_, i) => i !== index));
+        const previewToRemove = photoPreviews[index];
+        URL.revokeObjectURL(previewToRemove);
+        setPhotoPreviews(prev => prev.filter((_, i) => i !== index));
+    };
+    
+    const handleRemoveExistingPhoto = (url: string) => {
+        setFormData(prev => ({
+            ...prev,
+            fotos: prev.fotos?.filter(p => p !== url)
+        }));
+        setDeletedPhotos(prev => [...prev, url]);
+    };
+
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!formData.nome || !formData.construtora) {
             alert("Nome da Obra e Construtora são obrigatórios.");
             return;
         }
-        onSave(formData);
+        onSave(formData, filesToUpload, deletedPhotos);
     };
     
     const availableProducts = useMemo(() => {
@@ -1295,116 +1330,156 @@ const ObraModal: FC<{
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
-            <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col relative">
+                 {isSaving && (
+                    <div className="absolute inset-0 bg-white bg-opacity-75 flex flex-col justify-center items-center z-10 rounded-lg">
+                        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+                        <p className="mt-4 text-gray-600 font-semibold">Salvando obra...</p>
+                    </div>
+                )}
                 <div className="p-6 border-b flex justify-between items-center">
                     <h3 className="text-2xl font-bold">{formData.id ? 'Editar Obra' : 'Adicionar Nova Obra'}</h3>
                      <button onClick={onClose}><XIcon className="h-6 w-6 text-gray-500 hover:text-gray-800" /></button>
                 </div>
 
-                <div className="p-6 overflow-y-auto flex-grow space-y-6">
-                    {/* --- DETALHES --- */}
-                    <div className="space-y-4">
-                        <h4 className="text-lg font-semibold border-b pb-2">Detalhes da Obra</h4>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Nome da Obra</label>
-                            <input type="text" name="nome" value={formData.nome || ''} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Construtora</label>
-                            <input type="text" name="construtora" value={formData.construtora || ''} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
+                <form onSubmit={handleSubmit} className="flex-grow contents">
+                    <div className="p-6 overflow-y-auto flex-grow space-y-6">
+                        {/* --- DETALHES --- */}
+                        <div className="space-y-4">
+                            <h4 className="text-lg font-semibold border-b pb-2">Detalhes da Obra</h4>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">Etapa do Lead</label>
-                                <select name="etapa" value={formData.etapa || ''} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                                    {ETAPA_LEAD_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                                </select>
+                                <label className="block text-sm font-medium text-gray-700">Nome da Obra</label>
+                                <input type="text" name="nome" value={formData.nome || ''} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700">Fase da Obra</label>
-                                <select name="fase" value={formData.fase || ''} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                                    {FASE_OBRA_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                </select>
+                                <label className="block text-sm font-medium text-gray-700">Construtora</label>
+                                <input type="text" name="construtora" value={formData.construtora || ''} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Etapa do Lead</label>
+                                    <select name="etapa" value={formData.etapa || ''} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                                        {ETAPA_LEAD_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700">Fase da Obra</label>
+                                    <select name="fase" value={formData.fase || ''} onChange={handleChange} className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                                        {FASE_OBRA_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* --- CONTATOS --- */}
+                        <div>
+                            <h4 className="text-lg font-semibold border-b pb-2">Contatos</h4>
+                            <ul className="space-y-2 mt-2">
+                                {formData.contatos?.map(c => <li key={c.id} className="flex justify-between items-center p-2 bg-gray-100 rounded"><span>{c.nome} - {c.telefone}</span><button type="button" onClick={() => handleRemoveContact(c.id)}><TrashIcon className="h-5 w-5 text-red-500"/></button></li>)}
+                            </ul>
+                            {isAddingContact ? (
+                                <div className="grid grid-cols-2 gap-2 mt-2 p-2 border rounded">
+                                    <input type="text" placeholder="Nome" value={newContact.nome || ''} onChange={e => setNewContact({...newContact, nome: e.target.value})} className="p-2 border rounded" />
+                                    <input type="text" placeholder="Telefone" value={newContact.telefone || ''} onChange={e => setNewContact({...newContact, telefone: e.target.value})} className="p-2 border rounded" />
+                                    <input type="email" placeholder="Email" value={newContact.email || ''} onChange={e => setNewContact({...newContact, email: e.target.value})} className="p-2 border rounded" />
+                                    <input type="text" placeholder="Cargo" value={newContact.cargo || ''} onChange={e => setNewContact({...newContact, cargo: e.target.value})} className="p-2 border rounded" />
+                                    <div className="col-span-2 flex justify-end space-x-2">
+                                        <button type="button" onClick={() => setIsAddingContact(false)} className="bg-gray-200 px-3 py-1 rounded text-sm">Cancelar</button>
+                                        <button type="button" onClick={handleAddContact} className="bg-blue-500 text-white px-3 py-1 rounded text-sm">Salvar</button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <button type="button" onClick={() => setIsAddingContact(true)} className="mt-2 text-blue-600 hover:underline text-sm flex items-center"><PlusCircleIcon className="h-5 w-5 mr-1" /> Adicionar Contato</button>
+                            )}
+                        </div>
+                        
+                        {/* --- TAREFAS --- */}
+                        <div>
+                            <h4 className="text-lg font-semibold border-b pb-2">Tarefas</h4>
+                            <ul className="space-y-2 mt-2">
+                                {formData.tarefas?.map(t => <li key={t.id} className="flex justify-between items-center p-2 bg-gray-100 rounded"><span>{t.titulo} ({new Date(t.data).toLocaleDateString('pt-BR')})</span><button type="button" onClick={() => handleRemoveTask(t.id)}><TrashIcon className="h-5 w-5 text-red-500"/></button></li>)}
+                            </ul>
+                            {isAddingTask ? (
+                                <div className="grid grid-cols-2 gap-2 mt-2 p-2 border rounded">
+                                    <input type="text" placeholder="Título" value={newTask.titulo || ''} onChange={e => setNewTask({...newTask, titulo: e.target.value})} className="p-2 border rounded col-span-2" />
+                                    <textarea placeholder="Descrição" value={newTask.descricao || ''} onChange={e => setNewTask({...newTask, descricao: e.target.value})} className="p-2 border rounded col-span-2" rows={2}></textarea>
+                                    <input type="date" value={newTask.data || ''} onChange={e => setNewTask({...newTask, data: e.target.value})} className="p-2 border rounded" />
+                                    <select value={newTask.tipo || ''} onChange={e => setNewTask({...newTask, tipo: e.target.value as TipoTarefa})} className="p-2 border rounded">
+                                        {TIPO_TAREFA_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                    </select>
+                                    <div className="col-span-2 flex justify-end space-x-2">
+                                        <button type="button" onClick={() => setIsAddingTask(false)} className="bg-gray-200 px-3 py-1 rounded text-sm">Cancelar</button>
+                                        <button type="button" onClick={handleAddTask} className="bg-blue-500 text-white px-3 py-1 rounded text-sm">Salvar</button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <button type="button" onClick={() => setIsAddingTask(true)} className="mt-2 text-blue-600 hover:underline text-sm flex items-center"><PlusCircleIcon className="h-5 w-5 mr-1" /> Adicionar Tarefa</button>
+                            )}
+                        </div>
+
+                        {/* --- PROPOSTAS --- */}
+                        <div>
+                            <h4 className="text-lg font-semibold border-b pb-2">Propostas</h4>
+                            <ul className="space-y-2 mt-2">
+                                {formData.propostas?.map(p => <li key={p.id} className="flex justify-between items-center p-2 bg-gray-100 rounded"><span>{p.representada} - {p.valor.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</span><button type="button" onClick={() => handleRemoveProposta(p.id)}><TrashIcon className="h-5 w-5 text-red-500"/></button></li>)}
+                            </ul>
+                            {isAddingProposta ? (
+                                <div className="grid grid-cols-2 gap-2 mt-2 p-2 border rounded">
+                                    <select value={newProposta.representada || ''} onChange={e => setNewProposta({...newProposta, representada: e.target.value as Representada, produtos: []})} className="p-2 border rounded col-span-2">
+                                        {Object.values(Representada).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                    </select>
+                                    {/* FIX: Explicitly type `option` as `HTMLOptionElement` to fix `unknown` type inference and allow accessing `.value`. */}
+                                    <select multiple value={newProposta.produtos || []} onChange={e => setNewProposta({...newProposta, produtos: Array.from(e.target.selectedOptions, (option: HTMLOptionElement) => option.value)})} className="p-2 border rounded col-span-2 h-24">
+                                        {availableProducts.map(p => <option key={p} value={p}>{p}</option>)}
+                                    </select>
+                                    <input type="number" placeholder="Valor (R$)" value={newProposta.valor || ''} onChange={e => setNewProposta({...newProposta, valor: +e.target.value})} className="p-2 border rounded col-span-2" />
+                                    <div className="col-span-2 flex justify-end space-x-2">
+                                        <button type="button" onClick={() => setIsAddingProposta(false)} className="bg-gray-200 px-3 py-1 rounded text-sm">Cancelar</button>
+                                        <button type="button" onClick={handleAddProposta} className="bg-blue-500 text-white px-3 py-1 rounded text-sm">Salvar</button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <button type="button" onClick={() => setIsAddingProposta(true)} className="mt-2 text-blue-600 hover:underline text-sm flex items-center"><PlusCircleIcon className="h-5 w-5 mr-1" /> Adicionar Proposta</button>
+                            )}
+                        </div>
+                        {/* --- FOTOS --- */}
+                        <div>
+                            <h4 className="text-lg font-semibold border-b pb-2">Fotos</h4>
+                            <div className="mt-2">
+                                {(formData.fotos?.length || 0) > 0 || photoPreviews.length > 0 ? (
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                                        {formData.fotos?.map((url) => (
+                                            <div key={url} className="relative group">
+                                                <img src={url} alt="Foto da obra" className="w-full h-24 object-cover rounded-md shadow-sm" />
+                                                <button type="button" onClick={() => handleRemoveExistingPhoto(url)} className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity" aria-label="Remover foto"><XIcon className="h-3 w-3" /></button>
+                                            </div>
+                                        ))}
+                                        {photoPreviews.map((previewUrl, index) => (
+                                            <div key={previewUrl} className="relative group">
+                                                <img src={previewUrl} alt={`Pré-visualização ${index + 1}`} className="w-full h-24 object-cover rounded-md shadow-sm opacity-80" />
+                                                <button type="button" onClick={() => handleRemoveNewPhoto(index)} className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1" aria-label="Remover nova foto"><XIcon className="h-3 w-3" /></button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-500">Nenhuma foto adicionada.</p>
+                                )}
+                                <div className="mt-4">
+                                    <label className="flex items-center justify-center w-full px-4 py-2 bg-gray-100 text-blue-600 rounded-md shadow-sm tracking-wide uppercase border border-blue-400 cursor-pointer hover:bg-blue-600 hover:text-white">
+                                        <UploadIcon className="h-5 w-5 mr-2" />
+                                        <span className="text-sm font-semibold">Adicionar Fotos</span>
+                                        <input type='file' multiple accept="image/*" className="hidden" onChange={handleFileChange} />
+                                    </label>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* --- CONTATOS --- */}
-                    <div>
-                        <h4 className="text-lg font-semibold border-b pb-2">Contatos</h4>
-                        <ul className="space-y-2 mt-2">
-                            {formData.contatos?.map(c => <li key={c.id} className="flex justify-between items-center p-2 bg-gray-100 rounded"><span>{c.nome} - {c.telefone}</span><button type="button" onClick={() => handleRemoveContact(c.id)}><TrashIcon className="h-5 w-5 text-red-500"/></button></li>)}
-                        </ul>
-                        {isAddingContact ? (
-                            <div className="grid grid-cols-2 gap-2 mt-2 p-2 border rounded">
-                                <input type="text" placeholder="Nome" value={newContact.nome || ''} onChange={e => setNewContact({...newContact, nome: e.target.value})} className="p-2 border rounded" />
-                                <input type="text" placeholder="Telefone" value={newContact.telefone || ''} onChange={e => setNewContact({...newContact, telefone: e.target.value})} className="p-2 border rounded" />
-                                <input type="email" placeholder="Email" value={newContact.email || ''} onChange={e => setNewContact({...newContact, email: e.target.value})} className="p-2 border rounded" />
-                                <input type="text" placeholder="Cargo" value={newContact.cargo || ''} onChange={e => setNewContact({...newContact, cargo: e.target.value})} className="p-2 border rounded" />
-                                <div className="col-span-2 flex justify-end space-x-2">
-                                    <button type="button" onClick={() => setIsAddingContact(false)} className="bg-gray-200 px-3 py-1 rounded text-sm">Cancelar</button>
-                                    <button type="button" onClick={handleAddContact} className="bg-blue-500 text-white px-3 py-1 rounded text-sm">Salvar</button>
-                                </div>
-                            </div>
-                        ) : (
-                             <button type="button" onClick={() => setIsAddingContact(true)} className="mt-2 text-blue-600 hover:underline text-sm flex items-center"><PlusCircleIcon className="h-5 w-5 mr-1" /> Adicionar Contato</button>
-                        )}
+                    <div className="p-4 bg-gray-50 border-t flex justify-end space-x-3">
+                        <button type="button" onClick={onClose} className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md font-semibold hover:bg-gray-300">Cancelar</button>
+                        <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-md font-semibold hover:bg-blue-700">Salvar</button>
                     </div>
-                    
-                    {/* --- TAREFAS --- */}
-                    <div>
-                        <h4 className="text-lg font-semibold border-b pb-2">Tarefas</h4>
-                        <ul className="space-y-2 mt-2">
-                            {formData.tarefas?.map(t => <li key={t.id} className="flex justify-between items-center p-2 bg-gray-100 rounded"><span>{t.titulo} ({new Date(t.data).toLocaleDateString('pt-BR')})</span><button type="button" onClick={() => handleRemoveTask(t.id)}><TrashIcon className="h-5 w-5 text-red-500"/></button></li>)}
-                        </ul>
-                        {isAddingTask ? (
-                             <div className="grid grid-cols-2 gap-2 mt-2 p-2 border rounded">
-                                <input type="text" placeholder="Título" value={newTask.titulo || ''} onChange={e => setNewTask({...newTask, titulo: e.target.value})} className="p-2 border rounded col-span-2" />
-                                <textarea placeholder="Descrição" value={newTask.descricao || ''} onChange={e => setNewTask({...newTask, descricao: e.target.value})} className="p-2 border rounded col-span-2" rows={2}></textarea>
-                                <input type="date" value={newTask.data || ''} onChange={e => setNewTask({...newTask, data: e.target.value})} className="p-2 border rounded" />
-                                <select value={newTask.tipo || ''} onChange={e => setNewTask({...newTask, tipo: e.target.value as TipoTarefa})} className="p-2 border rounded">
-                                    {TIPO_TAREFA_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                </select>
-                                <div className="col-span-2 flex justify-end space-x-2">
-                                    <button type="button" onClick={() => setIsAddingTask(false)} className="bg-gray-200 px-3 py-1 rounded text-sm">Cancelar</button>
-                                    <button type="button" onClick={handleAddTask} className="bg-blue-500 text-white px-3 py-1 rounded text-sm">Salvar</button>
-                                </div>
-                            </div>
-                        ) : (
-                             <button type="button" onClick={() => setIsAddingTask(true)} className="mt-2 text-blue-600 hover:underline text-sm flex items-center"><PlusCircleIcon className="h-5 w-5 mr-1" /> Adicionar Tarefa</button>
-                        )}
-                    </div>
-
-                    {/* --- PROPOSTAS --- */}
-                    <div>
-                        <h4 className="text-lg font-semibold border-b pb-2">Propostas</h4>
-                        <ul className="space-y-2 mt-2">
-                            {formData.propostas?.map(p => <li key={p.id} className="flex justify-between items-center p-2 bg-gray-100 rounded"><span>{p.representada} - {p.valor.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}</span><button type="button" onClick={() => handleRemoveProposta(p.id)}><TrashIcon className="h-5 w-5 text-red-500"/></button></li>)}
-                        </ul>
-                        {isAddingProposta ? (
-                             <div className="grid grid-cols-2 gap-2 mt-2 p-2 border rounded">
-                                <select value={newProposta.representada || ''} onChange={e => setNewProposta({...newProposta, representada: e.target.value as Representada, produtos: []})} className="p-2 border rounded col-span-2">
-                                     {Object.values(Representada).map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                </select>
-                                <select multiple value={newProposta.produtos || []} onChange={e => setNewProposta({...newProposta, produtos: Array.from(e.target.selectedOptions, option => option.value)})} className="p-2 border rounded col-span-2 h-24">
-                                     {availableProducts.map(p => <option key={p} value={p}>{p}</option>)}
-                                </select>
-                                <input type="number" placeholder="Valor (R$)" value={newProposta.valor || ''} onChange={e => setNewProposta({...newProposta, valor: +e.target.value})} className="p-2 border rounded col-span-2" />
-                                <div className="col-span-2 flex justify-end space-x-2">
-                                    <button type="button" onClick={() => setIsAddingProposta(false)} className="bg-gray-200 px-3 py-1 rounded text-sm">Cancelar</button>
-                                    <button type="button" onClick={handleAddProposta} className="bg-blue-500 text-white px-3 py-1 rounded text-sm">Salvar</button>
-                                </div>
-                            </div>
-                        ) : (
-                            <button type="button" onClick={() => setIsAddingProposta(true)} className="mt-2 text-blue-600 hover:underline text-sm flex items-center"><PlusCircleIcon className="h-5 w-5 mr-1" /> Adicionar Proposta</button>
-                        )}
-                    </div>
-                </div>
-
-                <div className="p-4 bg-gray-50 border-t flex justify-end space-x-3">
-                    <button type="button" onClick={onClose} className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md font-semibold hover:bg-gray-300">Cancelar</button>
-                    <button type="button" onClick={handleSubmit} className="px-6 py-2 bg-blue-600 text-white rounded-md font-semibold hover:bg-blue-700">Salvar</button>
-                </div>
+                </form>
             </div>
         </div>
     );
@@ -1416,6 +1491,7 @@ export default function App() {
     const [user, setUser] = useState<User | null>(null);
     const [isLoadingAuth, setIsLoadingAuth] = useState(true);
     const [isLoadingData, setIsLoadingData] = useState(true);
+    const [isSaving, setIsSaving] = useState(false);
     const [authPage, setAuthPage] = useState<'login' | 'signup' | 'forgot'>('login');
     const [activeTab, setActiveTab] = useState<'map' | 'list' | 'tasks'| 'dashboard' | 'profile'>('map');
 
@@ -1427,7 +1503,6 @@ export default function App() {
     const [flyToTarget, setFlyToTarget] = useState<[number, number] | null>(null);
     const [routeToDraw, setRouteToDraw] = useState<Obra[] | null>(null);
     
-    // UI State
     const [isObraModalOpen, setIsObraModalOpen] = useState(false);
     const [selectedObra, setSelectedObra] = useState<Partial<Obra> | null>(null);
 
@@ -1443,25 +1518,20 @@ export default function App() {
 
     const fetchData = useCallback(async (userId: string) => {
         if (!isFirebaseConfigured || !db) {
-            console.error("Firestore is not initialized.");
             setIsLoadingData(false);
             return;
         }
         setIsLoadingData(true);
         try {
             const monthId = getCurrentMonthId();
-            // Fetch Obras
             const obrasQuery = query(collection(db, `users/${userId}/obras`));
             const obrasSnapshot = await getDocs(obrasQuery);
             const obrasData = obrasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Obra));
             
-            // Fetch Regions
             const regionsQuery = query(collection(db, `users/${userId}/regions`));
             const regionsSnapshot = await getDocs(regionsQuery);
-            const regionsData = regionsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Region));
-            setRegions(regionsData);
+            setRegions(regionsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Region)));
 
-            // Fetch Metas
             const metasQuery = query(collection(db, `users/${userId}/metas`));
             const metasSnapshot = await getDocs(metasQuery);
             const metasData = metasSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Metas));
@@ -1477,13 +1547,13 @@ export default function App() {
                  setCurrentMonthMetas(currentMetas);
             }
 
-            // Check for inactive obras
             const ninetyDaysAgo = new Date();
             ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
             const batch = writeBatch(db);
             let hasChanges = false;
             
             const updatedObras = obrasData.map(obra => {
+                if(!obra.lastUpdated) return obra;
                 const lastUpdatedDate = new Date(obra.lastUpdated);
                 const isInactive = lastUpdatedDate < ninetyDaysAgo;
                 const canBecomeInactive = ![EtapaLead.FECHADO, EtapaLead.PERDIDO, EtapaLead.INATIVO].includes(obra.etapa);
@@ -1494,25 +1564,9 @@ export default function App() {
                         ...obra,
                         etapa: EtapaLead.INATIVO,
                         lastUpdated: new Date().toISOString(),
-                        tarefas: [
-                            ...obra.tarefas,
-                            {
-                                id: `task_${Date.now()}`,
-                                obraId: obra.id,
-                                titulo: 'Verificar obra inativa',
-                                tipo: TipoTarefa.LIGACAO,
-                                data: new Date().toISOString(),
-                                descricao: 'Obra marcada como inativa por falta de atividade. Entrar em contato para reativar.',
-                                status: 'Pendente'
-                            } as Tarefa
-                        ]
                     };
                     const obraRef = doc(db, `users/${userId}/obras`, obra.id);
-                    batch.update(obraRef, { 
-                        etapa: updatedObra.etapa, 
-                        lastUpdated: updatedObra.lastUpdated,
-                        tarefas: updatedObra.tarefas
-                    });
+                    batch.update(obraRef, { etapa: updatedObra.etapa, lastUpdated: updatedObra.lastUpdated });
                     return updatedObra;
                 }
                 return obra;
@@ -1521,11 +1575,10 @@ export default function App() {
             if (hasChanges) {
                 await batch.commit();
                 setObras(updatedObras);
-                alert("Algumas obras foram marcadas como inativas por falta de atividade e tarefas foram criadas.");
+                alert("Algumas obras foram marcadas como inativas por falta de atividade.");
             } else {
                 setObras(obrasData);
             }
-
         } catch (error) {
             console.error("Error fetching data:", error);
         } finally {
@@ -1534,52 +1587,33 @@ export default function App() {
     }, []);
 
     useEffect(() => {
-        if (!isFirebaseConfigured) {
+        if (!isFirebaseConfigured || !auth || !db) {
             setIsLoadingAuth(false);
             return;
         }
 
-        if (!auth || !db) {
-            setIsLoadingAuth(false);
-            return;
-        }
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser && firebaseUser.emailVerified) {
                 const userDocRef = doc(db, "users", firebaseUser.uid);
                 const userDocSnap = await getDoc(userDocRef);
-                
                 let userProfileData: User;
 
                 if (!userDocSnap.exists()) {
-                    console.log(`Primeiro login para ${firebaseUser.uid}, criando perfil no Firestore.`);
-                    const newUserProfile: User = {
-                        id: firebaseUser.uid,
-                        nomeCompleto: firebaseUser.displayName || 'Usuário',
-                        email: firebaseUser.email || '',
-                    };
-
+                    const newUserProfile: User = { id: firebaseUser.uid, nomeCompleto: firebaseUser.displayName || 'Usuário', email: firebaseUser.email || '' };
                     try {
                         await setDoc(userDocRef, newUserProfile);
                         userProfileData = newUserProfile;
                     } catch (error) {
-                        console.error("CRÍTICO: Falha ao criar o perfil do usuário no primeiro login.", error);
-                        alert("Não foi possível configurar seu perfil no banco de dados. Verifique as regras de segurança do Firestore e tente fazer login novamente.");
-                        await signOut(auth);
-                        setIsLoadingAuth(false);
-                        return;
+                        console.error("Failed to create user profile:", error);
+                        await signOut(auth); setIsLoadingAuth(false); return;
                     }
                 } else {
                     userProfileData = userDocSnap.data() as User;
                 }
-
                 setUser(userProfileData);
                 await fetchData(firebaseUser.uid);
             } else {
-                setUser(null);
-                setObras([]);
-                setRegions([]);
-                setCurrentMonthMetas(null);
-                setAllMetas([]);
+                setUser(null); setObras([]); setRegions([]); setCurrentMonthMetas(null); setAllMetas([]);
             }
             setIsLoadingAuth(false);
         });
@@ -1587,11 +1621,7 @@ export default function App() {
     }, [fetchData]);
 
     const handleLogout = async () => {
-        if (!isFirebaseConfigured) {
-            setUser(null);
-            return;
-        }
-        if (!auth) return;
+        if (!isFirebaseConfigured || !auth) { setUser(null); return; }
         await signOut(auth);
     };
 
@@ -1605,136 +1635,118 @@ export default function App() {
             setSelectedObra(obra);
         } else if (coords) {
             setSelectedObra({ 
-                lat: coords.lat, 
-                lng: coords.lng,
-                dataCadastro: new Date().toISOString().split('T')[0],
-                etapa: EtapaLead.LEAD,
-                fase: FaseObra.PROSPECCAO,
-                contatos: [],
-                tarefas: [],
-                propostas: [],
-                fotos: [],
+                lat: coords.lat, lng: coords.lng,
+                dataCadastro: new Date().toISOString(), etapa: EtapaLead.LEAD,
+                fase: FaseObra.PROSPECCAO, contatos: [], tarefas: [], propostas: [], fotos: [],
             });
         }
         setIsObraModalOpen(true);
     };
-
-    const handleSaveObra = async (obraData: Partial<Obra>) => {
-        if (!user) return;
-
-        const obraToSave = {
-            ...obraData,
-            userId: user.id,
-            lastUpdated: new Date().toISOString(),
-        };
-
-        if (!isFirebaseConfigured) {
-            if (obraToSave.id) { // Update
-                 setObras(prev => prev.map(o => o.id === obraToSave.id ? obraToSave as Obra : o));
-            } else { // Create
-                const newObra = { ...obraToSave, id: `mock_obra_${Date.now()}` } as Obra;
-                setObras(prev => [...prev, newObra]);
-            }
-        } else {
-            try {
-                if (obraToSave.id) {
-                    const obraRef = doc(db, `users/${user.id}/obras`, obraToSave.id);
-                    await setDoc(obraRef, obraToSave, { merge: true });
-                    setObras(prev => prev.map(o => o.id === obraToSave.id ? obraToSave as Obra : o));
-                } else {
-                    const obrasCollRef = collection(db, `users/${user.id}/obras`);
-                    const { id, ...dataToSave } = obraToSave; // Don't save undefined id
-                    const newDocRef = await addDoc(obrasCollRef, dataToSave);
-                    setObras(prev => [...prev, { ...obraToSave, id: newDocRef.id } as Obra]);
-                }
-            } catch(e) {
-                console.error("Erro ao salvar obra:", e);
-                alert("Erro ao salvar obra. Verifique o console para mais detalhes.");
-                return;
-            }
-        }
-
-        setIsObraModalOpen(false);
-        setSelectedObra(null);
-    };
-
+    
     const handleCloseModal = () => {
         setIsObraModalOpen(false);
         setSelectedObra(null);
     }
 
-    const clearRoute = () => setRouteToDraw(null);
-    const onFlyToComplete = () => setFlyToTarget(null);
-    const navigate = (obra: Obra) => {
-        const url = `https://www.google.com/maps/dir/?api=1&destination=${obra.lat},${obra.lng}`;
-        window.open(url, '_blank');
+    const handleSaveObra = async (obraData: Partial<Obra>, filesToUpload: File[], deletedUrls: string[]) => {
+        if (!user) return;
+        
+        if (!isFirebaseConfigured || !db || !storage) {
+             const obraToSave = { ...obraData, lastUpdated: new Date().toISOString(), fotos: obraData.fotos?.filter(url => !deletedUrls.includes(url)), };
+             if (obraToSave.id) { setObras(prev => prev.map(o => o.id === obraToSave.id ? obraToSave as Obra : o)); }
+             else { const newObra = { ...obraToSave, id: `mock_obra_${Date.now()}` } as Obra; setObras(prev => [...prev, newObra]); }
+             handleCloseModal(); return;
+        }
+
+        setIsSaving(true);
+        try {
+            for (const url of deletedUrls) {
+                const photoRef = ref(storage, url);
+                await deleteObject(photoRef).catch(e => console.error("Failed to delete photo:", e));
+            }
+
+            const isNew = !obraData.id;
+            const obraDocRef = isNew ? doc(collection(db, `users/${user.id}/obras`)) : doc(db, `users/${user.id}/obras`, obraData.id!);
+            const obraId = obraDocRef.id;
+
+            const newPhotoUrls: string[] = [];
+            for (const file of filesToUpload) {
+                const filePath = `users/${user.id}/obras/${obraId}/${Date.now()}_${file.name}`;
+                const photoRef = ref(storage, filePath);
+                await uploadBytes(photoRef, file);
+                newPhotoUrls.push(await getDownloadURL(photoRef));
+            }
+
+            const currentFotos = obraData.fotos?.filter(url => !deletedUrls.includes(url)) || [];
+            
+            const obraToSave = {
+                ...obraData,
+                userId: user.id,
+                lastUpdated: new Date().toISOString(),
+                fotos: [...currentFotos, ...newPhotoUrls]
+            };
+            delete obraToSave.id; // Don't save id field inside document
+
+            await setDoc(obraDocRef, obraToSave);
+            const finalObraWithId = { ...obraToSave, id: obraId } as Obra;
+
+            if (isNew) { setObras(prev => [...prev, finalObraWithId]); }
+            else { setObras(prev => prev.map(o => o.id === obraId ? finalObraWithId : o)); }
+
+            handleCloseModal();
+        } catch (error) {
+            console.error("Error saving obra:", error);
+            alert(`Failed to save obra. ${getFirebaseErrorMessage((error as any).code)}`);
+        } finally {
+            setIsSaving(false);
+        }
     };
-    
+
+
     const saveRegion = async (regionData: Omit<Region, 'id'>) => {
-        if (!isFirebaseConfigured) {
+        if (!user) return;
+        if (!isFirebaseConfigured || !db) {
             const newRegion = { ...regionData, id: `mock_region_${Date.now()}` };
             setRegions(prev => [...prev, newRegion]);
             return;
         }
-
-        if (!user || !db) return;
         try {
             const regionCollRef = collection(db, `users/${user.id}/regions`);
             const newDocRef = await addDoc(regionCollRef, regionData);
             setRegions([...regions, { ...regionData, id: newDocRef.id }]);
-        } catch (e) {
-            console.error("Error adding region:", e);
-        }
+        } catch (e) { console.error("Error adding region:", e); }
     };
     
     const deleteRegion = async (id: string) => {
         if (!confirm('Tem certeza que deseja excluir esta região?')) return;
-        
-        if (!isFirebaseConfigured) {
+        if (!user) return;
+        if (!isFirebaseConfigured || !db) {
             setRegions(prev => prev.filter(r => r.id !== id));
             return;
         }
-        
-        if (!user || !db) return;
         try {
-            const regionDocRef = doc(db, `users/${user.id}/regions`, id);
-            await deleteDoc(regionDocRef);
+            await deleteDoc(doc(db, `users/${user.id}/regions`, id));
             setRegions(regions.filter(r => r.id !== id));
-        } catch (e) {
-            console.error("Error deleting region:", e);
-        }
+        } catch (e) { console.error("Error deleting region:", e); }
     };
-
-    const editObra = (obra: Obra) => openLeadForm(undefined, obra);
 
     const updateMetas = async (newMetasData: Omit<Metas, 'id'>) => {
         const monthId = getCurrentMonthId();
         const newMetas: Metas = { id: monthId, ...newMetasData };
+        if (!user) return;
 
-        if (!isFirebaseConfigured) {
+        if (!isFirebaseConfigured || !db) {
             setCurrentMonthMetas(newMetas);
             setAllMetas(prev => prev.map(m => m.id === monthId ? newMetas : m));
-            alert("Metas atualizadas (modo demonstração).");
             return;
         }
 
-        if (!user || !db) return;
         try {
-            const metasDocRef = doc(db, `users/${user.id}/metas`, monthId);
-            await setDoc(metasDocRef, newMetasData); // Save without id in the document body
+            await setDoc(doc(db, `users/${user.id}/metas`, monthId), newMetasData);
             setCurrentMonthMetas(newMetas);
-            setAllMetas(prev => {
-                const existing = prev.find(m => m.id === monthId);
-                if (existing) {
-                    return prev.map(m => m.id === monthId ? newMetas : m);
-                }
-                return [...prev, newMetas];
-            });
+            setAllMetas(prev => prev.find(m => m.id === monthId) ? prev.map(m => m.id === monthId ? newMetas : m) : [...prev, newMetas]);
             alert("Metas atualizadas com sucesso!");
-        } catch (error) {
-            console.error("Erro ao atualizar metas:", error);
-            alert("Não foi possível atualizar as metas.");
-        }
+        } catch (error) { console.error("Erro ao atualizar metas:", error); }
     };
     
     const handleRoteirizar = (obrasParaVisitar: Obra[]) => {
@@ -1753,7 +1765,6 @@ export default function App() {
         </div>
     );
 
-
     if (isLoadingAuth) {
         return <div className="min-h-screen flex items-center justify-center"><LoadingOverlay/></div>;
     }
@@ -1763,26 +1774,21 @@ export default function App() {
     }
     
     if (isLoadingData) {
-        return <div className="min-h-screen flex items-center justify-center"><LoadingOverlay/></div>;
+        return <div className="min-h-screen flex items-center justify-center relative"><LoadingOverlay/></div>;
     }
 
     const renderActiveTab = () => {
         switch (activeTab) {
             case 'map':
                 return <MapTab 
-                            obras={obras}
-                            openLeadForm={openLeadForm}
-                            routeToDraw={routeToDraw}
-                            clearRoute={clearRoute}
-                            flyToTarget={flyToTarget}
-                            onFlyToComplete={onFlyToComplete}
-                            regions={regions}
-                            onAddRegion={saveRegion}
-                            onDeleteRegion={deleteRegion}
-                            onNavigate={navigate}
+                            obras={obras} openLeadForm={openLeadForm} routeToDraw={routeToDraw}
+                            clearRoute={() => setRouteToDraw(null)} flyToTarget={flyToTarget}
+                            onFlyToComplete={() => setFlyToTarget(null)} regions={regions}
+                            onAddRegion={saveRegion} onDeleteRegion={deleteRegion}
+                            onNavigate={(obra) => window.open(`https://www.google.com/maps/dir/?api=1&destination=${obra.lat},${obra.lng}`, '_blank')}
                          />;
             case 'list':
-                return <ListaTab obras={obras} onEditObra={editObra} onFlyTo={handleFlyTo} onNavigate={navigate} />;
+                return <ListaTab obras={obras} onEditObra={openLeadForm} onFlyTo={handleFlyTo} onNavigate={(obra) => window.open(`https://www.google.com/maps/dir/?api=1&destination=${obra.lat},${obra.lng}`, '_blank')} />;
             case 'tasks':
                 return <TarefasTab obras={obras} onRoteirizar={handleRoteirizar} />;
             case 'dashboard':
@@ -1799,28 +1805,19 @@ export default function App() {
             <main className="flex-grow h-full overflow-hidden">
                 {renderActiveTab()}
             </main>
-            {/* Bottom Navigation */}
             <nav className="w-full bg-white border-t border-gray-200 flex justify-around items-center h-16 shadow-inner z-20">
-                <button onClick={() => setActiveTab('map')} className={`flex flex-col items-center justify-center p-2 rounded-lg w-1/5 ${activeTab === 'map' ? 'text-blue-600' : 'text-gray-500'}`}>
-                    <MapIcon className="h-6 w-6" />
-                    <span className="text-xs">Mapa</span>
-                </button>
-                 <button onClick={() => setActiveTab('list')} className={`flex flex-col items-center justify-center p-2 rounded-lg w-1/5 ${activeTab === 'list' ? 'text-blue-600' : 'text-gray-500'}`}>
-                    <ListIcon className="h-6 w-6" />
-                    <span className="text-xs">Lista</span>
-                </button>
-                 <button onClick={() => setActiveTab('tasks')} className={`flex flex-col items-center justify-center p-2 rounded-lg w-1/5 ${activeTab === 'tasks' ? 'text-blue-600' : 'text-gray-500'}`}>
-                    <CheckSquareIcon className="h-6 w-6" />
-                    <span className="text-xs">Tarefas</span>
-                </button>
-                 <button onClick={() => setActiveTab('dashboard')} className={`flex flex-col items-center justify-center p-2 rounded-lg w-1/5 ${activeTab === 'dashboard' ? 'text-blue-600' : 'text-gray-500'}`}>
-                    <BarChartIcon className="h-6 w-6" />
-                    <span className="text-xs">Dashboard</span>
-                </button>
-                 <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center justify-center p-2 rounded-lg w-1/5 ${activeTab === 'profile' ? 'text-blue-600' : 'text-gray-500'}`}>
-                    <UserIcon className="h-6 w-6" />
-                    <span className="text-xs">Perfil</span>
-                </button>
+                {[
+                    {name: 'map', label: 'Mapa', icon: MapIcon},
+                    {name: 'list', label: 'Lista', icon: ListIcon},
+                    {name: 'tasks', label: 'Tarefas', icon: CheckSquareIcon},
+                    {name: 'dashboard', label: 'Dashboard', icon: BarChartIcon},
+                    {name: 'profile', label: 'Perfil', icon: UserIcon}
+                ].map(({name, label, icon: Icon}) => (
+                    <button key={name} onClick={() => setActiveTab(name as any)} className={`flex flex-col items-center justify-center p-2 rounded-lg w-1/5 ${activeTab === name ? 'text-blue-600' : 'text-gray-500'}`}>
+                        <Icon className="h-6 w-6" />
+                        <span className="text-xs">{label}</span>
+                    </button>
+                ))}
             </nav>
             {isObraModalOpen && selectedObra && (
                 <ObraModal 
@@ -1828,6 +1825,7 @@ export default function App() {
                     onClose={handleCloseModal}
                     obraData={selectedObra}
                     onSave={handleSaveObra}
+                    isSaving={isSaving}
                 />
             )}
         </div>
