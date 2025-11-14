@@ -1,28 +1,32 @@
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAuth, Auth } from "firebase/auth";
-import { getFirestore, Firestore } from "firebase/firestore";
-import { getStorage, FirebaseStorage } from "firebase/storage";
 
-// Your web app's Firebase configuration
+import firebase from "firebase/compat/app";
+import "firebase/compat/auth";
+import "firebase/compat/firestore";
+import "firebase/compat/storage";
+
+// TODO: Replace with your app's Firebase project configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyAgcwrL1JLbNSjXUgNlqxJAXD8X5i0-e4U",
-  authDomain: "obramap-5d7a9.firebaseapp.com",
-  projectId: "obramap-5d7a9",
-  storageBucket: "obramap-5d7a9.appspot.com",
-  messagingSenderId: "920668288295",
-  appId: "1:920668288295:web:515e86d3cd124877326502",
-  measurementId: "G-5N15LWC3H6"
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_AUTH_DOMAIN",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_STORAGE_BUCKET",
+  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+  appId: "YOUR_APP_ID"
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const auth: Auth = getAuth(app);
-const db: Firestore = getFirestore(app);
-const storage: FirebaseStorage = getStorage(app);
+// A simple check to see if the config has been filled out
+// In a real app, you would use environment variables.
+export const isFirebaseConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY";
 
-// This flag is now always true, as the configuration is hardcoded.
-export const isFirebaseConfigured = true;
+// FIX: Use compat library to initialize Firebase. This ensures the app works even
+// if an older version of the Firebase SDK is installed, which would cause the
+// "initializeApp is not an exported member" error with v9 modular imports.
+const app = isFirebaseConfigured ? firebase.initializeApp(firebaseConfig) : null;
 
-// Export the Firebase services
-export { auth, db, storage };
+export const auth = app ? firebase.auth() : null;
+export const db = app ? firebase.firestore() : null;
+export const storage = app ? firebase.storage() : null;
+
+if (!isFirebaseConfigured) {
+    console.warn("Firebase is not configured. The app will run in demonstration mode. Please provide your Firebase config in firebase.ts");
+}
