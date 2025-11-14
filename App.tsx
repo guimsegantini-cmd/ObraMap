@@ -1,6 +1,6 @@
 
 
-import React, { useState, useEffect, useMemo, FC, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import * as L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polyline, Polygon, CircleMarker } from 'react-leaflet';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
@@ -89,7 +89,13 @@ const getFirebaseErrorMessage = (errorCode: string): string => {
 
 
 // --- AUTH COMPONENTS ---
-const AuthLayout: FC<{ title: string, subtitle: string, children: React.ReactNode }> = ({ title, subtitle, children }) => (
+type AuthLayoutProps = {
+  title: string;
+  subtitle: string;
+  // FIX: The type checker incorrectly reports that 'children' is missing. Making it optional to resolve the error.
+  children?: React.ReactNode;
+};
+const AuthLayout = ({ title, subtitle, children }: AuthLayoutProps) => (
   <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center p-4">
     {!isFirebaseConfigured && (
         <div className="absolute top-0 left-0 right-0 bg-yellow-300 text-yellow-800 text-center p-2 text-sm shadow-sm z-10">
@@ -109,7 +115,11 @@ const AuthLayout: FC<{ title: string, subtitle: string, children: React.ReactNod
   </div>
 );
 
-const LoginPage: FC<{ setPage: (page: 'login' | 'signup' | 'forgot') => void; onMockLogin: (user: User) => void; }> = ({ setPage, onMockLogin }) => {
+type LoginPageProps = {
+  setPage: (page: 'login' | 'signup' | 'forgot') => void;
+  onMockLogin: (user: User) => void;
+};
+const LoginPage = ({ setPage, onMockLogin }: LoginPageProps) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -207,7 +217,11 @@ const LoginPage: FC<{ setPage: (page: 'login' | 'signup' | 'forgot') => void; on
   );
 };
 
-const SignupPage: FC<{ setPage: (page: 'login' | 'signup' | 'forgot') => void; onMockLogin: (user: User) => void; }> = ({ setPage, onMockLogin }) => {
+type SignupPageProps = {
+  setPage: (page: 'login' | 'signup' | 'forgot') => void;
+  onMockLogin: (user: User) => void;
+};
+const SignupPage = ({ setPage, onMockLogin }: SignupPageProps) => {
     const [nomeCompleto, setNomeCompleto] = useState('');
     const [email, setEmail] = useState('');
     const [senha, setSenha] = useState('');
@@ -299,7 +313,10 @@ const SignupPage: FC<{ setPage: (page: 'login' | 'signup' | 'forgot') => void; o
     );
 };
 
-const ForgotPasswordPage: FC<{ setPage: (page: 'login' | 'signup' | 'forgot') => void; }> = ({ setPage }) => {
+type ForgotPasswordPageProps = {
+  setPage: (page: 'login' | 'signup' | 'forgot') => void;
+};
+const ForgotPasswordPage = ({ setPage }: ForgotPasswordPageProps) => {
     const [email, setEmail] = useState('');
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -352,11 +369,12 @@ const ForgotPasswordPage: FC<{ setPage: (page: 'login' | 'signup' | 'forgot') =>
     );
 };
 
-const AuthManager: FC<{
+type AuthManagerProps = {
   page: 'login' | 'signup' | 'forgot';
   setPage: (page: 'login' | 'signup' | 'forgot') => void;
   onMockLogin: (user: User) => void;
-}> = ({ page, setPage, onMockLogin }) => {
+};
+const AuthManager = ({ page, setPage, onMockLogin }: AuthManagerProps) => {
   if (page === 'signup') {
     return <SignupPage setPage={setPage} onMockLogin={onMockLogin} />;
   }
@@ -369,7 +387,11 @@ const AuthManager: FC<{
 // --- MAP COMPONENTS ---
 const REGION_COLORS = ['blue', 'green', 'purple', 'orange', 'red', 'yellow'];
 
-const MapFlyToController: FC<{ flyToTarget: [number, number] | null; onFlyToComplete: () => void; }> = ({ flyToTarget, onFlyToComplete }) => {
+type MapFlyToControllerProps = {
+  flyToTarget: [number, number] | null;
+  onFlyToComplete: () => void;
+};
+const MapFlyToController = ({ flyToTarget, onFlyToComplete }: MapFlyToControllerProps) => {
     const map = useMapEvents({});
 
     useEffect(() => {
@@ -386,7 +408,10 @@ const MapFlyToController: FC<{ flyToTarget: [number, number] | null; onFlyToComp
     return null; 
 };
 
-const MapClickHandler: FC<{ onClick: (e: L.LeafletMouseEvent) => void }> = ({ onClick }) => {
+type MapClickHandlerProps = {
+  onClick: (e: L.LeafletMouseEvent) => void;
+};
+const MapClickHandler = ({ onClick }: MapClickHandlerProps) => {
     useMapEvents({
         click(e) {
             onClick(e);
@@ -395,7 +420,7 @@ const MapClickHandler: FC<{ onClick: (e: L.LeafletMouseEvent) => void }> = ({ on
     return null;
 };
 
-const MapTab: React.FC<{
+type MapTabProps = {
     obras: Obra[];
     openLeadForm: (coords?: { lat: number, lng: number }, obra?: Obra) => void;
     routeToDraw: Obra[] | null;
@@ -406,7 +431,8 @@ const MapTab: React.FC<{
     onAddRegion: (region: Omit<Region, 'id'>) => void;
     onDeleteRegion: (id: string) => void;
     onNavigate: (obra: Obra) => void;
-}> = ({ obras, openLeadForm, routeToDraw, clearRoute, flyToTarget, onFlyToComplete, regions, onAddRegion, onDeleteRegion, onNavigate }) => {
+};
+const MapTab = ({ obras, openLeadForm, routeToDraw, clearRoute, flyToTarget, onFlyToComplete, regions, onAddRegion, onDeleteRegion, onNavigate }: MapTabProps) => {
   const [userPosition, setUserPosition] = useState<[number, number] | null>(null);
   const [filterEtapa, setFilterEtapa] = useState<EtapaLead | 'todos'>('todos');
   const [filterFase, setFilterFase] = useState<FaseObra | 'todos'>('todos');
@@ -569,13 +595,14 @@ const MapTab: React.FC<{
   );
 };
 
-// --- OTHER TAB COMPONENTS (UNCHANGED, ABBREVIATED FOR BREVITY) ---
-const ListaTab: FC<{
-    obras: Obra[],
-    onEditObra: (obra: Obra) => void,
-    onFlyTo: (coords: [number, number]) => void,
-    onNavigate: (obra: Obra) => void,
-}> = ({ obras, onEditObra, onFlyTo, onNavigate }) => {
+// --- OTHER TAB COMPONENTS ---
+type ListaTabProps = {
+    obras: Obra[];
+    onEditObra: (obra: Obra) => void;
+    onFlyTo: (coords: [number, number]) => void;
+    onNavigate: (obra: Obra) => void;
+};
+const ListaTab = ({ obras, onEditObra, onFlyTo, onNavigate }: ListaTabProps) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterEtapa, setFilterEtapa] = useState<EtapaLead | 'todos'>('todos');
     const [filterFase, setFilterFase] = useState<FaseObra | 'todos'>('todos');
@@ -702,7 +729,11 @@ const ListaTab: FC<{
     );
 };
 
-const TarefasTab: FC<{ obras: Obra[], onRoteirizar: (obras: Obra[]) => void }> = ({ obras, onRoteirizar }) => {
+type TarefasTabProps = {
+  obras: Obra[];
+  onRoteirizar: (obras: Obra[]) => void;
+};
+const TarefasTab = ({ obras, onRoteirizar }: TarefasTabProps) => {
     const [filter, setFilter] = useState<'dia' | 'futuras' | 'todas' | 'custom'>('dia');
     const [customDate, setCustomDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -806,7 +837,11 @@ const TarefasTab: FC<{ obras: Obra[], onRoteirizar: (obras: Obra[]) => void }> =
     );
 };
 
-const DashboardTab: FC<{ obras: Obra[], allMetas: Metas[] }> = ({ obras, allMetas }) => {
+type DashboardTabProps = {
+  obras: Obra[];
+  allMetas: Metas[];
+};
+const DashboardTab = ({ obras, allMetas }: DashboardTabProps) => {
     const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthId());
     const [showPercentage, setShowPercentage] = useState(false);
 
@@ -1004,12 +1039,13 @@ const DashboardTab: FC<{ obras: Obra[], allMetas: Metas[] }> = ({ obras, allMeta
     );
 };
 
-const PerfilTab: FC<{ 
-    user: User, 
-    metas: Metas | null,
-    onLogout: () => void,
-    onUpdateMetas: (newMetas: Omit<Metas, 'id'>) => Promise<void> 
-}> = ({ user, metas, onLogout, onUpdateMetas }) => {
+type PerfilTabProps = {
+  user: User;
+  metas: Metas | null;
+  onLogout: () => void;
+  onUpdateMetas: (newMetas: Omit<Metas, 'id'>) => Promise<void>;
+};
+const PerfilTab = ({ user, metas, onLogout, onUpdateMetas }: PerfilTabProps) => {
     const [isMetasModalOpen, setIsMetasModalOpen] = useState(false);
     const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
@@ -1051,12 +1087,13 @@ const PerfilTab: FC<{
 };
 
 // --- MODAL COMPONENTS ---
-const MetasModal: FC<{
-    isOpen: boolean,
-    onClose: () => void,
-    currentMetas: Metas,
-    onSave: (newMetas: Omit<Metas, 'id'>) => Promise<void>
-}> = ({ isOpen, onClose, currentMetas, onSave }) => {
+type MetasModalProps = {
+  isOpen: boolean;
+  onClose: () => void;
+  currentMetas: Metas;
+  onSave: (newMetas: Omit<Metas, 'id'>) => Promise<void>;
+};
+const MetasModal = ({ isOpen, onClose, currentMetas, onSave }: MetasModalProps) => {
     const [metas, setMetas] = useState(currentMetas);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -1133,7 +1170,11 @@ const MetasModal: FC<{
     )
 };
 
-const ChangePasswordModal: FC<{ isOpen: boolean, onClose: () => void }> = ({ isOpen, onClose }) => {
+type ChangePasswordModalProps = {
+  isOpen: boolean;
+  onClose: () => void;
+};
+const ChangePasswordModal = ({ isOpen, onClose }: ChangePasswordModalProps) => {
     const [oldPassword, setOldPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
@@ -1192,13 +1233,14 @@ const ChangePasswordModal: FC<{ isOpen: boolean, onClose: () => void }> = ({ isO
     );
 };
 
-const ObraModal: FC<{
+type ObraModalProps = {
     isOpen: boolean;
     onClose: () => void;
     obraData: Partial<Obra>;
     onSave: (obra: Partial<Obra>, filesToUpload: File[], deletedUrls: string[]) => void;
     isSaving: boolean;
-}> = ({ isOpen, onClose, obraData, onSave, isSaving }) => {
+};
+const ObraModal = ({ isOpen, onClose, obraData, onSave, isSaving }: ObraModalProps) => {
     const [formData, setFormData] = useState<Partial<Obra>>({});
     
     const [isAddingContact, setIsAddingContact] = useState(false);
@@ -1210,14 +1252,12 @@ const ObraModal: FC<{
     const [isAddingProposta, setIsAddingProposta] = useState(false);
     const [newProposta, setNewProposta] = useState<Partial<Proposta>>({ representada: Representada.REP_A, produtos: [] });
 
-    // State for photo management
     const [filesToUpload, setFilesToUpload] = useState<File[]>([]);
     const [deletedPhotos, setDeletedPhotos] = useState<string[]>([]);
     const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
 
     useEffect(() => {
         setFormData(obraData);
-        // Reset all forms and states on data change
         setIsAddingContact(false);
         setNewContact({});
         setIsAddingTask(false);
@@ -1226,7 +1266,6 @@ const ObraModal: FC<{
         setNewProposta({ representada: Representada.REP_A, produtos: [] });
         setFilesToUpload([]);
         setDeletedPhotos([]);
-        // Clean up old previews
         photoPreviews.forEach(URL.revokeObjectURL);
         setPhotoPreviews([]);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1289,12 +1328,10 @@ const ObraModal: FC<{
         if (e.target.files) {
             const newFiles = Array.from(e.target.files);
             setFilesToUpload(prev => [...prev, ...newFiles]);
-
-            // FIX: Explicitly type `file` as `File` to allow `URL.createObjectURL` and fix `unknown` type inference error.
             const newPreviews = newFiles.map((file: File) => URL.createObjectURL(file));
             setPhotoPreviews(prev => [...prev, ...newPreviews]);
         }
-        e.target.value = ''; // Reset input to allow selecting same file again
+        e.target.value = '';
     };
 
     const handleRemoveNewPhoto = (index: number) => {
@@ -1428,7 +1465,6 @@ const ObraModal: FC<{
                                     <select value={newProposta.representada || ''} onChange={e => setNewProposta({...newProposta, representada: e.target.value as Representada, produtos: []})} className="p-2 border rounded col-span-2">
                                         {Object.values(Representada).map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                     </select>
-                                    {/* FIX: Explicitly type `option` as `HTMLOptionElement` to fix `unknown` type inference and allow accessing `.value`. */}
                                     <select multiple value={newProposta.produtos || []} onChange={e => setNewProposta({...newProposta, produtos: Array.from(e.target.selectedOptions, (option: HTMLOptionElement) => option.value)})} className="p-2 border rounded col-span-2 h-24">
                                         {availableProducts.map(p => <option key={p} value={p}>{p}</option>)}
                                     </select>
@@ -1477,7 +1513,9 @@ const ObraModal: FC<{
 
                     <div className="p-4 bg-gray-50 border-t flex justify-end space-x-3">
                         <button type="button" onClick={onClose} className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md font-semibold hover:bg-gray-300">Cancelar</button>
-                        <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-md font-semibold hover:bg-blue-700">Salvar</button>
+                        <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-md font-semibold hover:bg-blue-700" disabled={isSaving}>
+                            {isSaving ? 'Salvando...' : 'Salvar'}
+                        </button>
                     </div>
                 </form>
             </div>
@@ -1685,9 +1723,10 @@ export default function App() {
                 lastUpdated: new Date().toISOString(),
                 fotos: [...currentFotos, ...newPhotoUrls]
             };
-            delete obraToSave.id; // Don't save id field inside document
-
-            await setDoc(obraDocRef, obraToSave);
+            
+            const { id, ...dataToSave } = obraToSave;
+            await setDoc(obraDocRef, dataToSave);
+            
             const finalObraWithId = { ...obraToSave, id: obraId } as Obra;
 
             if (isNew) { setObras(prev => [...prev, finalObraWithId]); }
