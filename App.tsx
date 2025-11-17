@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import * as L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polyline, Polygon, CircleMarker } from 'react-leaflet';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import * as Recharts from 'recharts';
 import { auth, db, storage, isFirebaseConfigured } from './firebase';
 import { 
   createUserWithEmailAndPassword, 
@@ -36,6 +36,8 @@ import { ETAPA_LEAD_OPTIONS, FASE_OBRA_OPTIONS, TIPO_TAREFA_OPTIONS, REPRESENTAD
 import {
   ListIcon, MapIcon, CheckSquareIcon, BarChartIcon, UserIcon, EyeIcon, EyeOffIcon, XIcon, BriefcaseIcon, TrashIcon, PlusCircleIcon, RouteIcon, NavigationIcon, MyLocationIcon, UploadIcon, EditIcon, PhoneIcon
 } from './components/Icons';
+
+const { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } = Recharts;
 
 // --- HELPERS & MOCKS ---
 const getCurrentMonthId = () => new Date().toISOString().slice(0, 7); // YYYY-MM
@@ -89,12 +91,10 @@ const getFirebaseErrorMessage = (errorCode: string): string => {
 
 
 // --- AUTH COMPONENTS ---
-type AuthLayoutProps = {
+type AuthLayoutProps = React.PropsWithChildren<{
   title: string;
   subtitle: string;
-  // FIX: The type checker incorrectly reports that 'children' is missing. Making it optional to resolve the error.
-  children?: React.ReactNode;
-};
+}>;
 const AuthLayout = ({ title, subtitle, children }: AuthLayoutProps) => (
   <div className="min-h-screen bg-gray-50 flex flex-col justify-center items-center p-4">
     {!isFirebaseConfigured && (
@@ -1015,8 +1015,9 @@ const DashboardTab = ({ obras, allMetas }: DashboardTabProps) => {
                              <BarChart data={data.valorPropostaPorRepresentada} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="name" />
-                                <YAxis tickFormatter={(value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(value as number)} />
-                                <Tooltip formatter={(value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value as number)} />
+{/* FIX: Explicitly type the 'value' parameter and add a type check to prevent errors when formatting. */}
+                                <YAxis tickFormatter={(value: unknown) => typeof value === 'number' ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(value as number) : String(value)} />
+                                <Tooltip formatter={(value: unknown) => typeof value === 'number' ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value as number) : String(value)} />
                                 <Bar dataKey="Valor" fill="#82ca9d" />
                             </BarChart>
                          </ResponsiveContainer>
@@ -1027,8 +1028,9 @@ const DashboardTab = ({ obras, allMetas }: DashboardTabProps) => {
                               <BarChart data={data.valorFechadoPorRepresentada} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="name" />
-                                <YAxis tickFormatter={(value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(value as number)} />
-                                <Tooltip formatter={(value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value as number)} />
+{/* FIX: Explicitly type the 'value' parameter and add a type check to prevent errors when formatting. */}
+                                <YAxis tickFormatter={(value: unknown) => typeof value === 'number' ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(value as number) : String(value)} />
+                                <Tooltip formatter={(value: unknown) => typeof value === 'number' ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value as number) : String(value)} />
                                 <Bar dataKey="Valor" fill="#ffc658" />
                             </BarChart>
                          </ResponsiveContainer>
@@ -1465,7 +1467,7 @@ const ObraModal = ({ isOpen, onClose, obraData, onSave, isSaving }: ObraModalPro
                                     <select value={newProposta.representada || ''} onChange={e => setNewProposta({...newProposta, representada: e.target.value as Representada, produtos: []})} className="p-2 border rounded col-span-2">
                                         {Object.values(Representada).map(opt => <option key={opt} value={opt}>{opt}</option>)}
                                     </select>
-                                    <select multiple value={newProposta.produtos || []} onChange={e => setNewProposta({...newProposta, produtos: Array.from(e.target.selectedOptions, (option: HTMLOptionElement) => option.value)})} className="p-2 border rounded col-span-2 h-24">
+                                    <select multiple value={newProposta.produtos || []} onChange={e => setNewProposta({...newProposta, produtos: Array.from(e.target.selectedOptions, option => option.value)})} className="p-2 border rounded col-span-2 h-24">
                                         {availableProducts.map(p => <option key={p} value={p}>{p}</option>)}
                                     </select>
                                     <input type="number" placeholder="Valor (R$)" value={newProposta.valor || ''} onChange={e => setNewProposta({...newProposta, valor: +e.target.value})} className="p-2 border rounded col-span-2" />
@@ -1512,7 +1514,7 @@ const ObraModal = ({ isOpen, onClose, obraData, onSave, isSaving }: ObraModalPro
                     </div>
 
                     <div className="p-4 bg-gray-50 border-t flex justify-end space-x-3">
-                        <button type="button" onClick={onClose} className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md font-semibold hover:bg-gray-300">Cancelar</button>
+                        <button type="button" onClick={onClose} className="px-6 py-2 bg-gray-200 text-gray-700 rounded-md font-semibold hover:bg-gray-300" disabled={isSaving}>Cancelar</button>
                         <button type="submit" className="px-6 py-2 bg-blue-600 text-white rounded-md font-semibold hover:bg-blue-700" disabled={isSaving}>
                             {isSaving ? 'Salvando...' : 'Salvar'}
                         </button>
@@ -1602,9 +1604,25 @@ export default function App() {
                         ...obra,
                         etapa: EtapaLead.INATIVO,
                         lastUpdated: new Date().toISOString(),
+                        tarefas: [
+                            ...obra.tarefas,
+                            {
+                                id: `task_${Date.now()}`,
+                                obraId: obra.id,
+                                titulo: 'Verificar obra inativa',
+                                tipo: TipoTarefa.LIGACAO,
+                                data: new Date().toISOString(),
+                                descricao: 'Obra marcada como inativa por falta de atividade. Entrar em contato para reativar.',
+                                status: 'Pendente'
+                            } as Tarefa
+                        ]
                     };
                     const obraRef = doc(db, `users/${userId}/obras`, obra.id);
-                    batch.update(obraRef, { etapa: updatedObra.etapa, lastUpdated: updatedObra.lastUpdated });
+                    batch.update(obraRef, { 
+                        etapa: updatedObra.etapa, 
+                        lastUpdated: updatedObra.lastUpdated,
+                        tarefas: updatedObra.tarefas
+                    });
                     return updatedObra;
                 }
                 return obra;
@@ -1613,10 +1631,11 @@ export default function App() {
             if (hasChanges) {
                 await batch.commit();
                 setObras(updatedObras);
-                alert("Algumas obras foram marcadas como inativas por falta de atividade.");
+                alert("Algumas obras foram marcadas como inativas por falta de atividade e tarefas foram criadas.");
             } else {
                 setObras(obrasData);
             }
+
         } catch (error) {
             console.error("Error fetching data:", error);
         } finally {
@@ -1629,29 +1648,42 @@ export default function App() {
             setIsLoadingAuth(false);
             return;
         }
-
+        
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser && firebaseUser.emailVerified) {
                 const userDocRef = doc(db, "users", firebaseUser.uid);
                 const userDocSnap = await getDoc(userDocRef);
+                
                 let userProfileData: User;
 
                 if (!userDocSnap.exists()) {
-                    const newUserProfile: User = { id: firebaseUser.uid, nomeCompleto: firebaseUser.displayName || 'Usuário', email: firebaseUser.email || '' };
+                    const newUserProfile: User = {
+                        id: firebaseUser.uid,
+                        nomeCompleto: firebaseUser.displayName || 'Usuário',
+                        email: firebaseUser.email || '',
+                    };
                     try {
                         await setDoc(userDocRef, newUserProfile);
                         userProfileData = newUserProfile;
                     } catch (error) {
-                        console.error("Failed to create user profile:", error);
-                        await signOut(auth); setIsLoadingAuth(false); return;
+                        console.error("Falha ao criar perfil do usuário.", error);
+                        alert("Não foi possível configurar seu perfil. Tente fazer login novamente.");
+                        await signOut(auth);
+                        setIsLoadingAuth(false);
+                        return;
                     }
                 } else {
                     userProfileData = userDocSnap.data() as User;
                 }
+
                 setUser(userProfileData);
                 await fetchData(firebaseUser.uid);
             } else {
-                setUser(null); setObras([]); setRegions([]); setCurrentMonthMetas(null); setAllMetas([]);
+                setUser(null);
+                setObras([]);
+                setRegions([]);
+                setCurrentMonthMetas(null);
+                setAllMetas([]);
             }
             setIsLoadingAuth(false);
         });
@@ -1659,7 +1691,11 @@ export default function App() {
     }, [fetchData]);
 
     const handleLogout = async () => {
-        if (!isFirebaseConfigured || !auth) { setUser(null); return; }
+        if (!isFirebaseConfigured) {
+            setUser(null);
+            return;
+        }
+        if (!auth) return;
         await signOut(auth);
     };
 
@@ -1673,119 +1709,166 @@ export default function App() {
             setSelectedObra(obra);
         } else if (coords) {
             setSelectedObra({ 
-                lat: coords.lat, lng: coords.lng,
-                dataCadastro: new Date().toISOString(), etapa: EtapaLead.LEAD,
-                fase: FaseObra.PROSPECCAO, contatos: [], tarefas: [], propostas: [], fotos: [],
+                lat: coords.lat, 
+                lng: coords.lng,
+                dataCadastro: new Date().toISOString(),
+                etapa: EtapaLead.LEAD,
+                fase: FaseObra.PROSPECCAO,
+                contatos: [],
+                tarefas: [],
+                propostas: [],
+                fotos: [],
             });
         }
         setIsObraModalOpen(true);
     };
-    
+
     const handleCloseModal = () => {
         setIsObraModalOpen(false);
         setSelectedObra(null);
     }
-
+    
     const handleSaveObra = async (obraData: Partial<Obra>, filesToUpload: File[], deletedUrls: string[]) => {
         if (!user) return;
-        
-        if (!isFirebaseConfigured || !db || !storage) {
-             const obraToSave = { ...obraData, lastUpdated: new Date().toISOString(), fotos: obraData.fotos?.filter(url => !deletedUrls.includes(url)), };
-             if (obraToSave.id) { setObras(prev => prev.map(o => o.id === obraToSave.id ? obraToSave as Obra : o)); }
-             else { const newObra = { ...obraToSave, id: `mock_obra_${Date.now()}` } as Obra; setObras(prev => [...prev, newObra]); }
-             handleCloseModal(); return;
-        }
-
         setIsSaving(true);
+
         try {
+            if (!isFirebaseConfigured) {
+                const finalObra = {
+                    ...obraData, userId: user.id, lastUpdated: new Date().toISOString()
+                } as Obra;
+                if (finalObra.id) setObras(prev => prev.map(o => o.id === finalObra.id ? finalObra : o));
+                else {
+                    finalObra.id = `mock_obra_${Date.now()}`;
+                    setObras(prev => [...prev, finalObra]);
+                }
+                alert("Obra salva em modo de demonstração. Fotos não são salvas.");
+                return;
+            }
+            
             for (const url of deletedUrls) {
-                const photoRef = ref(storage, url);
-                await deleteObject(photoRef).catch(e => console.error("Failed to delete photo:", e));
+                try {
+                    const photoRef = ref(storage, url);
+                    await deleteObject(photoRef);
+                } catch (error: any) {
+                    if (error.code !== 'storage/object-not-found') console.error("Error deleting photo:", url, error);
+                }
             }
 
-            const isNew = !obraData.id;
-            const obraDocRef = isNew ? doc(collection(db, `users/${user.id}/obras`)) : doc(db, `users/${user.id}/obras`, obraData.id!);
-            const obraId = obraDocRef.id;
-
-            const newPhotoUrls: string[] = [];
+            const uploadedUrls: string[] = [];
+            const obraId = obraData.id || `new_${Date.now()}`;
             for (const file of filesToUpload) {
-                const filePath = `users/${user.id}/obras/${obraId}/${Date.now()}_${file.name}`;
+                const filePath = `users/${user.id}/obras/${obraId}/${file.name}_${Date.now()}`;
                 const photoRef = ref(storage, filePath);
                 await uploadBytes(photoRef, file);
-                newPhotoUrls.push(await getDownloadURL(photoRef));
+                const downloadUrl = await getDownloadURL(photoRef);
+                uploadedUrls.push(downloadUrl);
             }
 
-            const currentFotos = obraData.fotos?.filter(url => !deletedUrls.includes(url)) || [];
-            
+            const finalPhotoUrls = [...(obraData.fotos || []), ...uploadedUrls];
             const obraToSave = {
                 ...obraData,
+                fotos: finalPhotoUrls,
                 userId: user.id,
                 lastUpdated: new Date().toISOString(),
-                fotos: [...currentFotos, ...newPhotoUrls]
             };
-            
-            const { id, ...dataToSave } = obraToSave;
-            await setDoc(obraDocRef, dataToSave);
-            
-            const finalObraWithId = { ...obraToSave, id: obraId } as Obra;
 
-            if (isNew) { setObras(prev => [...prev, finalObraWithId]); }
-            else { setObras(prev => prev.map(o => o.id === obraId ? finalObraWithId : o)); }
-
-            handleCloseModal();
-        } catch (error) {
-            console.error("Error saving obra:", error);
-            alert(`Failed to save obra. ${getFirebaseErrorMessage((error as any).code)}`);
+            let savedObra: Obra;
+            if (obraToSave.id) {
+                const obraRef = doc(db, `users/${user.id}/obras`, obraToSave.id);
+                await setDoc(obraRef, obraToSave, { merge: true });
+                savedObra = obraToSave as Obra;
+                setObras(prev => prev.map(o => o.id === savedObra.id ? savedObra : o));
+            } else {
+                const obrasCollRef = collection(db, `users/${user.id}/obras`);
+                const { id, ...dataToSave } = obraToSave;
+                const newDocRef = await addDoc(obrasCollRef, dataToSave);
+                savedObra = { ...obraToSave, id: newDocRef.id } as Obra;
+                setObras(prev => [...prev, savedObra]);
+            }
+        } catch (e: any) {
+            console.error("Erro ao salvar obra:", e);
+            const errorMessage = e.code ? getFirebaseErrorMessage(e.code) : "Erro ao salvar obra. Verifique o console.";
+            alert(errorMessage);
         } finally {
             setIsSaving(false);
+            handleCloseModal();
         }
     };
 
 
+    const clearRoute = () => setRouteToDraw(null);
+    const onFlyToComplete = () => setFlyToTarget(null);
+    const navigate = (obra: Obra) => {
+        const url = `https://www.google.com/maps/dir/?api=1&destination=${obra.lat},${obra.lng}`;
+        window.open(url, '_blank');
+    };
+    
     const saveRegion = async (regionData: Omit<Region, 'id'>) => {
-        if (!user) return;
-        if (!isFirebaseConfigured || !db) {
+        if (!isFirebaseConfigured) {
             const newRegion = { ...regionData, id: `mock_region_${Date.now()}` };
             setRegions(prev => [...prev, newRegion]);
             return;
         }
+
+        if (!user || !db) return;
         try {
             const regionCollRef = collection(db, `users/${user.id}/regions`);
             const newDocRef = await addDoc(regionCollRef, regionData);
             setRegions([...regions, { ...regionData, id: newDocRef.id }]);
-        } catch (e) { console.error("Error adding region:", e); }
+        } catch (e) {
+            console.error("Error adding region:", e);
+        }
     };
     
     const deleteRegion = async (id: string) => {
         if (!confirm('Tem certeza que deseja excluir esta região?')) return;
-        if (!user) return;
-        if (!isFirebaseConfigured || !db) {
+        
+        if (!isFirebaseConfigured) {
             setRegions(prev => prev.filter(r => r.id !== id));
             return;
         }
+        
+        if (!user || !db) return;
         try {
-            await deleteDoc(doc(db, `users/${user.id}/regions`, id));
+            const regionDocRef = doc(db, `users/${user.id}/regions`, id);
+            await deleteDoc(regionDocRef);
             setRegions(regions.filter(r => r.id !== id));
-        } catch (e) { console.error("Error deleting region:", e); }
+        } catch (e) {
+            console.error("Error deleting region:", e);
+        }
     };
+
+    const editObra = (obra: Obra) => openLeadForm(undefined, obra);
 
     const updateMetas = async (newMetasData: Omit<Metas, 'id'>) => {
         const monthId = getCurrentMonthId();
         const newMetas: Metas = { id: monthId, ...newMetasData };
-        if (!user) return;
 
-        if (!isFirebaseConfigured || !db) {
+        if (!isFirebaseConfigured) {
             setCurrentMonthMetas(newMetas);
             setAllMetas(prev => prev.map(m => m.id === monthId ? newMetas : m));
+            alert("Metas atualizadas (modo demonstração).");
             return;
         }
 
+        if (!user || !db) return;
         try {
-            await setDoc(doc(db, `users/${user.id}/metas`, monthId), newMetasData);
+            const metasDocRef = doc(db, `users/${user.id}/metas`, monthId);
+            await setDoc(metasDocRef, newMetasData);
             setCurrentMonthMetas(newMetas);
-            setAllMetas(prev => prev.find(m => m.id === monthId) ? prev.map(m => m.id === monthId ? newMetas : m) : [...prev, newMetas]);
+            setAllMetas(prev => {
+                const existing = prev.find(m => m.id === monthId);
+                if (existing) {
+                    return prev.map(m => m.id === monthId ? newMetas : m);
+                }
+                return [...prev, newMetas];
+            });
             alert("Metas atualizadas com sucesso!");
-        } catch (error) { console.error("Erro ao atualizar metas:", error); }
+        } catch (error) {
+            console.error("Erro ao atualizar metas:", error);
+            alert("Não foi possível atualizar as metas.");
+        }
     };
     
     const handleRoteirizar = (obrasParaVisitar: Obra[]) => {
@@ -1804,6 +1887,7 @@ export default function App() {
         </div>
     );
 
+
     if (isLoadingAuth) {
         return <div className="min-h-screen flex items-center justify-center"><LoadingOverlay/></div>;
     }
@@ -1813,21 +1897,26 @@ export default function App() {
     }
     
     if (isLoadingData) {
-        return <div className="min-h-screen flex items-center justify-center relative"><LoadingOverlay/></div>;
+        return <div className="min-h-screen flex items-center justify-center"><LoadingOverlay/></div>;
     }
 
     const renderActiveTab = () => {
         switch (activeTab) {
             case 'map':
                 return <MapTab 
-                            obras={obras} openLeadForm={openLeadForm} routeToDraw={routeToDraw}
-                            clearRoute={() => setRouteToDraw(null)} flyToTarget={flyToTarget}
-                            onFlyToComplete={() => setFlyToTarget(null)} regions={regions}
-                            onAddRegion={saveRegion} onDeleteRegion={deleteRegion}
-                            onNavigate={(obra) => window.open(`https://www.google.com/maps/dir/?api=1&destination=${obra.lat},${obra.lng}`, '_blank')}
+                            obras={obras}
+                            openLeadForm={openLeadForm}
+                            routeToDraw={routeToDraw}
+                            clearRoute={clearRoute}
+                            flyToTarget={flyToTarget}
+                            onFlyToComplete={onFlyToComplete}
+                            regions={regions}
+                            onAddRegion={saveRegion}
+                            onDeleteRegion={deleteRegion}
+                            onNavigate={navigate}
                          />;
             case 'list':
-                return <ListaTab obras={obras} onEditObra={openLeadForm} onFlyTo={handleFlyTo} onNavigate={(obra) => window.open(`https://www.google.com/maps/dir/?api=1&destination=${obra.lat},${obra.lng}`, '_blank')} />;
+                return <ListaTab obras={obras} onEditObra={editObra} onFlyTo={handleFlyTo} onNavigate={navigate} />;
             case 'tasks':
                 return <TarefasTab obras={obras} onRoteirizar={handleRoteirizar} />;
             case 'dashboard':
@@ -1844,19 +1933,28 @@ export default function App() {
             <main className="flex-grow h-full overflow-hidden">
                 {renderActiveTab()}
             </main>
+            {/* Bottom Navigation */}
             <nav className="w-full bg-white border-t border-gray-200 flex justify-around items-center h-16 shadow-inner z-20">
-                {[
-                    {name: 'map', label: 'Mapa', icon: MapIcon},
-                    {name: 'list', label: 'Lista', icon: ListIcon},
-                    {name: 'tasks', label: 'Tarefas', icon: CheckSquareIcon},
-                    {name: 'dashboard', label: 'Dashboard', icon: BarChartIcon},
-                    {name: 'profile', label: 'Perfil', icon: UserIcon}
-                ].map(({name, label, icon: Icon}) => (
-                    <button key={name} onClick={() => setActiveTab(name as any)} className={`flex flex-col items-center justify-center p-2 rounded-lg w-1/5 ${activeTab === name ? 'text-blue-600' : 'text-gray-500'}`}>
-                        <Icon className="h-6 w-6" />
-                        <span className="text-xs">{label}</span>
-                    </button>
-                ))}
+                <button onClick={() => setActiveTab('map')} className={`flex flex-col items-center justify-center p-2 rounded-lg w-1/5 ${activeTab === 'map' ? 'text-blue-600' : 'text-gray-500'}`}>
+                    <MapIcon className="h-6 w-6" />
+                    <span className="text-xs">Mapa</span>
+                </button>
+                 <button onClick={() => setActiveTab('list')} className={`flex flex-col items-center justify-center p-2 rounded-lg w-1/5 ${activeTab === 'list' ? 'text-blue-600' : 'text-gray-500'}`}>
+                    <ListIcon className="h-6 w-6" />
+                    <span className="text-xs">Lista</span>
+                </button>
+                 <button onClick={() => setActiveTab('tasks')} className={`flex flex-col items-center justify-center p-2 rounded-lg w-1/5 ${activeTab === 'tasks' ? 'text-blue-600' : 'text-gray-500'}`}>
+                    <CheckSquareIcon className="h-6 w-6" />
+                    <span className="text-xs">Tarefas</span>
+                </button>
+                 <button onClick={() => setActiveTab('dashboard')} className={`flex flex-col items-center justify-center p-2 rounded-lg w-1/5 ${activeTab === 'dashboard' ? 'text-blue-600' : 'text-gray-500'}`}>
+                    <BarChartIcon className="h-6 w-6" />
+                    <span className="text-xs">Dashboard</span>
+                </button>
+                 <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center justify-center p-2 rounded-lg w-1/5 ${activeTab === 'profile' ? 'text-blue-600' : 'text-gray-500'}`}>
+                    <UserIcon className="h-6 w-6" />
+                    <span className="text-xs">Perfil</span>
+                </button>
             </nav>
             {isObraModalOpen && selectedObra && (
                 <ObraModal 
