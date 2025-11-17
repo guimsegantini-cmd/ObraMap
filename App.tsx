@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import * as L from 'leaflet';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polyline, Polygon, CircleMarker } from 'react-leaflet';
@@ -876,6 +877,24 @@ const DashboardTab = ({ obras, allMetas }: DashboardTabProps) => {
             Valor: fechados.flatMap(o => o.propostas).reduce((sum, p) => p.representada === r ? sum + p.valor : sum, 0),
         }));
 
+        const valorPorProduto = fechados.reduce((acc, obra) => {
+            obra.propostas.forEach(proposta => {
+                if (proposta.produtos && proposta.produtos.length > 0) {
+                    // Divide o valor da proposta igualmente entre os produtos listados
+                    const valorPorProdutoItem = proposta.valor / proposta.produtos.length;
+                    proposta.produtos.forEach(produto => {
+                        acc[produto] = (acc[produto] || 0) + valorPorProdutoItem;
+                    });
+                }
+            });
+            return acc;
+        }, {} as Record<string, number>);
+
+        const valorPorProdutoData = Object.entries(valorPorProduto)
+            .map(([name, Valor]) => ({ name, Valor }))
+            .sort((a, b) => b.Valor - a.Valor);
+
+
         return {
             data: {
                 valorFechado,
@@ -886,6 +905,7 @@ const DashboardTab = ({ obras, allMetas }: DashboardTabProps) => {
                 valorPropostaPorRepresentada,
                 valorFechadoPorRepresentada,
                 valorFechadoPorRepresentadaData: valorFechadoPorRepresentada,
+                valorPorProdutoData,
             },
             selectedMetas: metas,
         };
@@ -1016,8 +1036,8 @@ const DashboardTab = ({ obras, allMetas }: DashboardTabProps) => {
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="name" />
 {/* FIX: Explicitly type the 'value' parameter and add a type check to prevent errors when formatting. */}
-                                <YAxis tickFormatter={(value: unknown) => typeof value === 'number' ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(value as number) : String(value)} />
-                                <Tooltip formatter={(value: unknown) => typeof value === 'number' ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value as number) : String(value)} />
+                                <YAxis tickFormatter={(value: unknown) => typeof value === 'number' ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(value) : ''} />
+                                <Tooltip formatter={(value: unknown) => typeof value === 'number' ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value) : ''} />
                                 <Bar dataKey="Valor" fill="#82ca9d" />
                             </BarChart>
                          </ResponsiveContainer>
@@ -1029,11 +1049,30 @@ const DashboardTab = ({ obras, allMetas }: DashboardTabProps) => {
                                 <CartesianGrid strokeDasharray="3 3" />
                                 <XAxis dataKey="name" />
 {/* FIX: Explicitly type the 'value' parameter and add a type check to prevent errors when formatting. */}
-                                <YAxis tickFormatter={(value: unknown) => typeof value === 'number' ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(value as number) : String(value)} />
-                                <Tooltip formatter={(value: unknown) => typeof value === 'number' ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value as number) : String(value)} />
+                                <YAxis tickFormatter={(value: unknown) => typeof value === 'number' ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(value) : ''} />
+                                <Tooltip formatter={(value: unknown) => typeof value === 'number' ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value) : ''} />
                                 <Bar dataKey="Valor" fill="#ffc658" />
                             </BarChart>
                          </ResponsiveContainer>
+                    </div>
+                    <div className="bg-white p-4 rounded-lg shadow h-96 lg:col-span-2">
+                         <h3 className="font-bold text-lg mb-2">Vendas por Produto ({formatMonth(selectedMonth)})</h3>
+                         {data.valorPorProdutoData.length > 0 ? (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={data.valorPorProdutoData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                                    <CartesianGrid strokeDasharray="3 3" />
+                                    <XAxis type="number" tickFormatter={(value: unknown) => typeof value === 'number' ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact' }).format(value) : ''} />
+                                    <YAxis type="category" dataKey="name" width={150} interval={0} fontSize="12px" />
+                                    <Tooltip formatter={(value: unknown) => typeof value === 'number' ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value) : ''} />
+                                    <Legend />
+                                    <Bar dataKey="Valor" fill="#4ade80" />
+                                </BarChart>
+                            </ResponsiveContainer>
+                         ) : (
+                            <div className="flex items-center justify-center h-full text-gray-500">
+                                <p>Nenhuma venda de produto registrada para este mês.</p>
+                            </div>
+                         )}
                     </div>
                 </div>
             </div>
@@ -1252,7 +1291,7 @@ const ObraModal = ({ isOpen, onClose, obraData, onSave, isSaving }: ObraModalPro
     const [newTask, setNewTask] = useState<Partial<Tarefa>>({ tipo: TipoTarefa.LIGACAO, data: new Date().toISOString().split('T')[0] });
     
     const [isAddingProposta, setIsAddingProposta] = useState(false);
-    const [newProposta, setNewProposta] = useState<Partial<Proposta>>({ representada: Representada.REP_A, produtos: [] });
+    const [newProposta, setNewProposta] = useState<Partial<Proposta>>({ representada: Object.values(Representada)[0], produtos: [] });
 
     const [filesToUpload, setFilesToUpload] = useState<File[]>([]);
     const [deletedPhotos, setDeletedPhotos] = useState<string[]>([]);
@@ -1265,7 +1304,7 @@ const ObraModal = ({ isOpen, onClose, obraData, onSave, isSaving }: ObraModalPro
         setIsAddingTask(false);
         setNewTask({ tipo: TipoTarefa.LIGACAO, data: new Date().toISOString().split('T')[0] });
         setIsAddingProposta(false);
-        setNewProposta({ representada: Representada.REP_A, produtos: [] });
+        setNewProposta({ representada: Object.values(Representada)[0], produtos: [] });
         setFilesToUpload([]);
         setDeletedPhotos([]);
         photoPreviews.forEach(URL.revokeObjectURL);
@@ -1317,7 +1356,7 @@ const ObraModal = ({ isOpen, onClose, obraData, onSave, isSaving }: ObraModalPro
         }
         const updatedPropostas = [...(formData.propostas || []), { ...newProposta, id: `p_${Date.now()}`, data: new Date().toISOString() } as Proposta];
         setFormData(prev => ({...prev, propostas: updatedPropostas }));
-        setNewProposta({ representada: Representada.REP_A, produtos: [] });
+        setNewProposta({ representada: Object.values(Representada)[0], produtos: [] });
         setIsAddingProposta(false);
     }
 
