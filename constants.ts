@@ -23,11 +23,15 @@ export const TIPO_TAREFA_OPTIONS = [
 ];
 
 export const REPRESENTADA_PRODUTOS_MAP: Record<Representada, string[]> = {
-    [Representada.REP_A]: ['Produto A1', 'Produto A2', 'Produto A3'],
-    [Representada.REP_B]: ['Produto B1', 'Produto B2'],
-    [Representada.REP_C]: ['Produto C1', 'Produto C2', 'Produto C3', 'Produto C4'],
-    [Representada.REP_D]: ['Produto D1'],
+    [Representada.DM2]: ['Portas Corta-Fogo'],
+    [Representada.ALUMBRA]: ['Acabamentos Elétricos', 'Disjuntores'],
+    [Representada.CONDEX]: ['Cabos Elétricos'],
+    [Representada.MGM]: ['Kit porta pronta', 'Esquadrias de alumínio'],
+    [Representada.ROCA]: ['Louças e Metais', 'Porcelanato'],
+    [Representada.DACAPO]: ['Revestimentos'],
+    [Representada.CONSTRUCOM]: ['Blocos de Concreto', 'Piso Intertravado', 'Argamassas'],
 };
+
 
 export const MOCK_OBRAS: Obra[] = [
     {
@@ -43,7 +47,7 @@ export const MOCK_OBRAS: Obra[] = [
         lastUpdated: new Date().toISOString(),
         contatos: [{ id: 'c1', nome: 'João Silva', telefone: '31 9999-8888', cargo: 'Engenheiro' }],
         tarefas: [{ id: 't1', obraId: '1', titulo: 'Enviar proposta final', tipo: TipoTarefa.PROPOSTA, data: new Date().toISOString(), status: 'Pendente' }],
-        propostas: [{ id: 'p1', representada: Representada.REP_A, produtos: ['Produto A1'], valor: 50000, data: new Date().toISOString() }],
+        propostas: [{ id: 'p1', representada: Representada.ALUMBRA, produtos: ['Acabamentos Elétricos'], valor: 50000, data: new Date().toISOString() }],
         fotos: ['https://picsum.photos/seed/obra1/400/300'],
     },
     {
@@ -71,11 +75,11 @@ export const MOCK_OBRAS: Obra[] = [
         lng: -43.93,
         etapa: EtapaLead.FECHADO,
         fase: FaseObra.ENTREGUE,
-        dataCadastro: '2023-01-20',
+        dataCadastro: new Date().toISOString().slice(0, 7) + '-01',
         lastUpdated: new Date().toISOString(),
         contatos: [{ id: 'c2', nome: 'Maria Souza', telefone: '31 9999-7777', cargo: 'Arquiteta' }],
         tarefas: [],
-        propostas: [{ id: 'p2', representada: Representada.REP_C, produtos: ['Produto C2', 'Produto C3'], valor: 120000, data: new Date().toISOString() }],
+        propostas: [{ id: 'p2', representada: Representada.ROCA, produtos: ['Louças e Metais', 'Porcelanato'], valor: 120000, data: new Date().toISOString() }],
         fotos: ['https://picsum.photos/seed/obra3/400/300'],
     },
 ];
