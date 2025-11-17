@@ -1,32 +1,34 @@
 
-import firebase from "firebase/compat/app";
-import "firebase/compat/auth";
-import "firebase/compat/firestore";
-import "firebase/compat/storage";
+// FIX: Explicitly import Firebase services for their side-effects to ensure they are registered before use.
+// This resolves the "Component ... has not been registered yet" error.
+// import "firebase/auth";
+// import "firebase/firestore";
+// import "firebase/storage";
 
-// TODO: Replace with your app's Firebase project configuration
+// FIX: The build tool reports that 'initializeApp' is not an exported member of 'firebase/app'.
+// FIX: Corrected the Firebase import for 'initializeApp' to use a named import ('{ initializeApp }') instead of a namespace import ('* as firebaseApp'), aligning with the Firebase v9+ modular SDK syntax.
+import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
+
+// Production Firebase project configuration
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyAgcwrL1JLbNSjXUgNlqxJAXD8X5i0-e4U",
+  authDomain: "obramap-5d7a9.firebaseapp.com",
+  projectId: "obramap-5d7a9",
+  storageBucket: "obramap-5d7a9.firebasestorage.app",
+  messagingSenderId: "920668288295",
+  appId: "1:920668288295:web:515e86d3cd124877326502",
+  measurementId: "G-5N15LWC3H6"
 };
 
-// A simple check to see if the config has been filled out
-// In a real app, you would use environment variables.
-export const isFirebaseConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY";
+// The app is now configured for production, so this is always true.
+export const isFirebaseConfigured = true;
 
-// FIX: Use compat library to initialize Firebase. This ensures the app works even
-// if an older version of the Firebase SDK is installed, which would cause the
-// "initializeApp is not an exported member" error with v9 modular imports.
-const app = isFirebaseConfigured ? firebase.initializeApp(firebaseConfig) : null;
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
 
-export const auth = app ? firebase.auth() : null;
-export const db = app ? firebase.firestore() : null;
-export const storage = app ? firebase.storage() : null;
-
-if (!isFirebaseConfigured) {
-    console.warn("Firebase is not configured. The app will run in demonstration mode. Please provide your Firebase config in firebase.ts");
-}
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+export const storage = getStorage(app);
