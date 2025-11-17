@@ -1,12 +1,9 @@
 
-// FIX: Explicitly import Firebase services for their side-effects to ensure they are registered before use.
-// This resolves the "Component ... has not been registered yet" error.
-// import "firebase/auth";
-// import "firebase/firestore";
-// import "firebase/storage";
+// It's good practice to import services you use.
+import "firebase/auth";
+import "firebase/firestore";
+import "firebase/storage";
 
-// FIX: The build tool reports that 'initializeApp' is not an exported member of 'firebase/app'.
-// FIX: Corrected the Firebase import for 'initializeApp' to use a named import ('{ initializeApp }') instead of a namespace import ('* as firebaseApp'), aligning with the Firebase v9+ modular SDK syntax.
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
