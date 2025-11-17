@@ -1,4 +1,4 @@
-import type * as L from 'leaflet';
+import * as L from 'leaflet';
 
 export enum EtapaLead {
     LEAD = 'Lead',
@@ -12,12 +12,12 @@ export enum EtapaLead {
 
 export enum FaseObra {
     PROSPECCAO = 'Prospecção',
+    PROJETO = 'Projeto',
     FUNDACAO = 'Fundação',
     ESTRUTURA = 'Estrutura',
     ALVENARIA = 'Alvenaria',
-    INSTALACOES = 'Instalações',
     ACABAMENTO = 'Acabamento',
-    FINALIZADA = 'Finalizada',
+    ENTREGUE = 'Entregue',
 }
 
 export enum TipoTarefa {
@@ -25,14 +25,17 @@ export enum TipoTarefa {
     VISITA = 'Visita',
     EMAIL = 'E-mail',
     PROPOSTA = 'Proposta',
-    OUTRO = 'Outro',
+    FOLLOW_UP = 'Follow-up',
 }
 
 export enum Representada {
-    REP_A = 'Representada A',
-    REP_B = 'Representada B',
-    REP_C = 'Representada C',
-    REP_D = 'Representada D',
+    DM2 = 'DM2',
+    ALUMBRA = 'ALUMBRA',
+    CONDEX = 'CONDEX',
+    MGM = 'MGM',
+    ROCA = 'ROCA',
+    DACAPO = 'DACAPO',
+    CONSTRUCOM = 'CONSTRUCOM',
 }
 
 export interface User {
@@ -45,16 +48,16 @@ export interface Contato {
     id: string;
     nome: string;
     telefone: string;
-    email: string;
-    cargo: string;
+    email?: string;
+    cargo?: string;
 }
 
 export interface Tarefa {
     id: string;
     obraId: string;
     titulo: string;
-    descricao: string;
-    data: string; // ISO string
+    descricao?: string;
+    data: string;
     tipo: TipoTarefa;
     status: 'Pendente' | 'Concluída';
 }
@@ -67,11 +70,6 @@ export interface Proposta {
     data: string; // ISO string
 }
 
-export interface Foto {
-    url: string;
-    refPath: string;
-}
-
 export interface Obra {
     id: string;
     userId: string;
@@ -81,12 +79,12 @@ export interface Obra {
     lng: number;
     etapa: EtapaLead;
     fase: FaseObra;
-    dataCadastro: string; // YYYY-MM-DD
-    lastUpdated: string; // ISO string
+    dataCadastro: string; // ISO string date
+    lastUpdated: string; // ISO string date
     contatos: Contato[];
     tarefas: Tarefa[];
     propostas: Proposta[];
-    fotos: Foto[];
+    fotos: string[]; // URLs of photos
 }
 
 export interface Metas {
